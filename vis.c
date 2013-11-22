@@ -22,7 +22,7 @@ void launch_vis(const char* filename)
   if(pid == 0) {
     unsetenv("LD_PRELOAD");
     execl("/usr/bin/pvbatch", "pvbatch", "--use-offscreen-rendering",
-          "batch.py", filename, NULL);
+          "batch.py", "-f", filename, "-g", NULL);
     fprintf(stderr, "could not exec pvbatch: %d\n", errno);
   }
 }
