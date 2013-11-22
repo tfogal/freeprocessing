@@ -9,6 +9,12 @@
 #include <unistd.h>
 #include "vis.h"
 
+#ifndef NDEBUG
+# define LOG(x, ...) fprintf(stderr, x, __VA_ARGS__)
+#else
+# define LOG(x, ...) /* log function removed for release */
+#endif
+
 typedef FILE* (fopenfqn)(const char*, const char*);
 typedef int (fclosefqn)(FILE*);
 
@@ -59,7 +65,7 @@ fp_init()
 FILE*
 fopen(const char* name, const char* mode)
 {
-  fprintf(stderr, "[%d] opening %s\n", pid, name);
+  LOG("[%d] opening %s\n", pid, name);
   /* need an empty entry in the table to store the return value. */
   struct openfile* of = of_find(files, fp_of, NULL);
   if(of == NULL) {
@@ -82,7 +88,7 @@ fopen(const char* name, const char* mode)
 int
 fclose(FILE* fp)
 {
-  fprintf(stderr, "[%d] closing %p\n", pid, fp);
+  LOG("[%d] closing %p\n", pid, fp);
   struct openfile* of = of_find(files, fp_of, fp);
   if(of == NULL) {
     fprintf(stderr, "[%d] I don't know %p.  Ignoring for in situ.\n", pid, fp);

@@ -10,13 +10,13 @@ writecsv: csv.o
 	$(CC) $^ -o $@ -ldl
 
 libfp.so: override.o
-	$(CC) -shared $^ -o $@ -ldl
+	$(CC) -fPIC -shared $^ -o $@ -ldl
 
 libsitu.so: simplesitu.o vis.o
-	$(CC) -shared $^ -o $@ -ldl
+	$(CC) -fPIC -shared $^ -o $@ -ldl
 
 clean:
-	rm -f $(obj) libfp.so writecsv
+	rm -f $(obj) libfp.so libsitu.so writecsv
 
 override.o: override.c
 	$(CC) -c $(CFLAGS_ORIDE) $^ -o $@
