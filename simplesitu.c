@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 #include <assert.h>
 #include <dlfcn.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -65,7 +66,15 @@ fp_init()
 FILE*
 fopen(const char* name, const char* mode)
 {
+  if(mode == NULL) { errno = EINVAL; return NULL; }
+  /* are they opening it read-only?  It's not a simulation output, then. */
+  if(mode[0] == 'r') {
+    LOG("[%d] open for %s is read-only; ignoring it.\n", pid, name);
+    /* in that case, skip it, we don't want to keep track of it. */
+    return fopenf(name, mode);
+  }
   LOG("[%d] opening %s\n", pid, name);
+
   /* need an empty entry in the table to store the return value. */
   struct openfile* of = of_find(files, fp_of, NULL);
   if(of == NULL) {
