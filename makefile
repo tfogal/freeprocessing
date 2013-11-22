@@ -2,9 +2,9 @@ WARN=-Wall -Wextra -pedantic
 CFLAGS=-std=c99 -fPIC $(WARN) -ggdb
 # humorously, dlsym() actually violates the standard
 CFLAGS_ORIDE=-std=c99 -ggdb -fPIC -Wall -Wextra
-obj=override.o csv.o
+obj=override.o csv.o simplesitu.o vis.o
 
-all: $(obj) libfp.so writecsv
+all: $(obj) libfp.so libsitu.so writecsv
 
 writecsv: csv.o
 	$(CC) $^ -o $@ -ldl
@@ -12,8 +12,13 @@ writecsv: csv.o
 libfp.so: override.o
 	$(CC) -shared $^ -o $@ -ldl
 
+libsitu.so: simplesitu.o vis.o
+	$(CC) -shared $^ -o $@ -ldl
+
 clean:
 	rm -f $(obj) libfp.so writecsv
 
 override.o: override.c
+	$(CC) -c $(CFLAGS_ORIDE) $^ -o $@
+simplesitu.o: simplesitu.c
 	$(CC) -c $(CFLAGS_ORIDE) $^ -o $@
