@@ -1,133 +1,113 @@
+#!python
+from __future__ import with_statement
 import argparse
-import csv
-import logging
-import math
 import os
+import logging
 from paraview.simple import *
+paraview.simple._DisableFirstRenderCameraReset()
 
-class SansHeader:
-  """A file object that skips lines that start with 'x', as those are assumed
-  to be header lines."""
-  def __init__(self, f, comment="x"):
-    self.f = f
-    self.comment = comment
+# guts of a programmable filter
+normalizeMass="""
+input = self.GetPolyDataInput();
+output = self.GetPolyDataOutput();
+output.CopyStructure(input)
+output.CopyAttributes(input)
 
-  def next(self):
-    line = self.f.next()
-    while(self.f and line.startswith(self.comment) or line.strip()==""):
-      line = self.f.next()
-    return line
+mass = input.GetPointData().GetArray('mass');
+if mass is not None:
+  ntups = mass.GetNumberOfTuples();
+  massNorm = mass.NewInstance();
+  massNorm.SetNumberOfTuples(ntups);
+  massNorm.SetName('MassNorm');
 
-  def __iter__(self): return self
+  minRadius = 100.00
+  minMax = mass.GetRange();
+  drange = (minMax[1] - minMax[0]) / (minRadius*10)
 
-  def __enter__(self): return self
-  def __exit__(self, type, value, callback):
-    self.f.__exit__(f, type, value, callback)
+  for i in range(ntups):
+    curmass = mass.GetTuple1(i)
+    massNorm.SetTuple1(i, minRadius + (curmass - minMax[0])/drange)
 
-def mass_column(filename):
-  """If present, the seventh column is mass.  This returns the mass of every
-  particle in a list."""
-  with open(filename, "r") as f:
-    rdr = csv.reader(SansHeader(f))
-    masses = []
-    for line in iter(rdr):
-      if(len(line) <= 6):
-        masses.append(1.0)
-      else:
-        masses.append(float(line[6]))
-
-  return masses
-
-def defaultview():
-  view = GetActiveView()
-  if not view:
-    view = CreateRenderView()
-  view.CameraViewUp = [0, 1, 0]
-  view.CameraFocalPoint = [0, 0, 0]
-  view.CameraPosition = [0.001, 0.001, -2200]
-  view.CameraViewAngle = 70
-  view.Background = [ 0.1, 0.1, 0.3 ]
-  return view
-
-def printcam(cam):
-  print("cam: ", cam.CameraPosition)
-  print("ref: ", cam.CameraFocalPoint)
-  print("vup: ", cam.CameraViewUp)
-
-def get_bounds(filename):
-  bounds = [ (-1,1), (-1,1), (-1,1) ]
-  with open(filename, "r") as f:
-    rdr = csv.reader(SansHeader(f))
-    masses = []
-    for line in iter(rdr):
-      pos = (float(line[0]), float(line[1]), float(line[2]))
-      bounds[0] = (min(bounds[0][0],pos[0]), max(bounds[0][1],pos[0]))
-      bounds[1] = (min(bounds[1][0],pos[1]), max(bounds[1][1],pos[1]))
-      bounds[2] = (min(bounds[2][0],pos[2]), max(bounds[2][1],pos[2]))
-  return bounds
-
-def average(values): return sum(values, 0.0) / len(values)
+  output.GetPointData().AddArray(massNorm);
+"""
 
 args = argparse.ArgumentParser(description='control nbody visualization.')
-args.add_argument("-f", "--filename", type=str,
-                  help="filename to read")
-args.add_argument("-g", "--debug", help="enable debugging",
-                  action="store_const", const=1)
+args.add_argument("-f", "--filename", type=str, help="filename to read")
+args.add_argument("-g", "--debug", action="store_const", const=1,
+                  help="enable debugging")
+args.add_argument("--axes", action="store_const", const=1, help="axes")
 args = args.parse_args()
 if args.debug:
   logging.getLogger().setLevel(logging.DEBUG)
 
-def spheres(filename, masseqz):
-  """Returns a list of ParaView 'Sphere' objects."""
-  sphlist = []
-  f = open(args.filename, "r")
-  rdr = csv.reader(SansHeader(f))
-  for line in iter(rdr):
-    if(len(line) < 3):
-      logging.error("Not enough elements found per line.")
-    pos = (float(line[0]), float(line[1]), float(line[2]))
-    vel = (0.0, 0.0, 0.0)
-    mass = 1.0
+reader = CSVReader(FileName=args.filename)
 
-    if(len(line) > 3):
-      vel = (float(line[3]), float(line[4]), float(line[5]))
-    if(len(line) > 6):
-      mass = float(line[6])
-    logging.debug("%f %f %f" % (pos[0], pos[1], pos[2]))
-    sph = Sphere()
-    sph.PhiResolution = 360
-    sph.ThetaResolution = 360
-    sph.Center = (pos[0], pos[1], pos[2])
-    sph.Radius = mass / (masseqz/1000)
-    sphlist.append(sph)
-  return sphlist
+geomFilter = TableToPoints()
+geomFilter.XColumn = 'x'
+geomFilter.YColumn = 'y'
+geomFilter.ZColumn = 'z'
 
-sphlist = spheres(args.filename, max(mass_column(args.filename)))
+marray = geomFilter.PointData.GetArray('mass')
+if marray is None or marray.GetNumberOfTuples() == 0:
+  print("Mass array is missing!")
+  exit(1)
 
-#bounds = get_bounds(args.filename)
-#box = Box()
-#box.XLength = math.fabs(bounds[0][1] - bounds[0][0])
-#box.YLength = math.fabs(bounds[1][1] - bounds[1][0])
-#box.ZLength = math.fabs(bounds[2][1] - bounds[2][0])
-#box.Center = (average(bounds[0]), average(bounds[1]), average(bounds[2]))
-#boxdrep = Show(box, view=view)
-#boxdrep.Opacity = 0.2
+pyFilter = ProgrammableFilter()
+pyFilter.Script = normalizeMass
 
-view = defaultview()
-for s in sphlist:
-  s.UpdatePipeline()
-  drep = Show(s, view=view)
-  drep.Opacity = 0.75
+glyphFilter = Glyph(pyFilter, GlyphType="Sphere")
+glyphFilter.Scalars = ['POINTS', 'MassNorm']
+glyphFilter.ScaleMode = 'scalar'
+glyphFilter.GlyphType.ThetaResolution = 180
+glyphFilter.GlyphType.PhiResolution = 90
+glyphFilter.UpdatePipeline()
 
-timestep = os.path.basename(args.filename)
-try:
-  timestep = timestep[0:timestep.rindex(".")]
-except ValueError: pass
+glyphRep = Show(glyphFilter)
+glyphRep.Scaling = True
+glyphRep.Orient = False
 
-fn = timestep + ".png"
-SetActiveView(view)
-Render(view=view)
-Render(view=view)
-WriteImage(fn, view=view, Magnification=3)
-print "Saved", fn
-#printcam(view)
+# assign lut by name is only supported in PV 4.1
+#massNorm = glyphFilter.PointData.GetArray('MassNorm')
+#glyphRep.ColorArrayName = 'MassNorm'
+#glyphRep.Representation = 'Surface'
+#glyphRep.LookupTable = AssignLookupTable(massNorm,'Rainbow Desaturated')
+
+rview = GetRenderView()
+rview.CameraViewUp = [0.0, 1.0, 0.0]
+rview.CameraFocalPoint = [0.0, 0.0, 0.0]
+rview.CameraClippingRange = [7.2714539725029, 17.230673836856745]
+rview.CameraPosition = [-2000.0, 100.0, 70000]
+rview.CameraFocalPoint = [-3192.246, 312.739, -523.349]
+rview.CameraFocalPoint = [-4000.246, 600.739, -523.349]
+rview.CameraPosition = [4607.79, 5063.724, 42613.160]
+if not args.axes:
+  rview.CenterAxesVisibility = 0
+paraview.simple._DisableFirstRenderCameraReset()
+
+def outname(infilename):
+  timestep = os.path.basename(infilename)
+  # lop off any existing extension.  But don't fail if there is no extension.
+  try:
+    timestep = timestep[0:timestep.rindex(".")]
+  except ValueError: pass
+  return timestep + ".png"
+
+Render()
+WriteImage(outname(args.filename), Magnification=3)
+#eye = GetRenderView().CameraPosition
+#ref = GetRenderView().CameraFocalPoint
+#vup = GetRenderView().CameraViewUp
+#print("eye: %7.3f %7.3f %7.3f" % (eye[0], eye[1], eye[2]))
+#print("ref: %7.3f %7.3f %7.3f" % (ref[0], ref[1], ref[2]))
+#print("vup: %7.3f %7.3f %7.3f" % (vup[0], vup[1], vup[2]))
+
+Delete(glyphRep)
+Delete(glyphFilter)
+Delete(pyFilter)
+Delete(geomFilter)
+Delete(reader)
+del glyphRep
+del glyphFilter
+del pyFilter
+del geomFilter
+del reader
