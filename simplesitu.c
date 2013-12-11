@@ -73,6 +73,11 @@ fopen(const char* name, const char* mode)
     /* in that case, skip it, we don't want to keep track of it. */
     return fopenf(name, mode);
   }
+  /* what about a temp file?  probably don't want to visualize those. */
+  if(strncmp(name, "/tmp", 4) == 0) {
+    LOG("[%d] opening temp file (%s); ignoring.\n", pid, name);
+    return fopenf(name, mode);
+  }
   LOG("[%d] opening %s\n", pid, name);
 
   /* need an empty entry in the table to store the return value. */
@@ -106,6 +111,13 @@ fclose(FILE* fp)
   assert(of->fp == fp);
   assert(of->name != NULL);
   const int rv = fclosef(fp);
+  if(rv != 0) {
+    LOG("[%d] close failure! (%d)\n", pid, rv);
+    /* bail without doing vis; the file is invalid anyway, and the vis tool's
+     * error message[s] will just obscure ours. */
+    of->fp = NULL; free(of->name);
+    return rv;
+  }
   launch_vis(of->name);
   of->fp = NULL;
   free(of->name);
