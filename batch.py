@@ -36,6 +36,15 @@ args.add_argument("-f", "--filename", type=str, help="filename to read")
 args.add_argument("-g", "--debug", action="store_const", const=1,
                   help="enable debugging")
 args.add_argument("--axes", action="store_const", const=1, help="axes")
+args.add_argument("--eye", nargs=3, type=float,
+                  default=[-2000.0, 100.0, 70000],
+                  help="location of the camera")
+args.add_argument("--ref", nargs=3, type=float,
+                  default=[-4000.246, 600.739, -523.349],
+                  help="location the camera focuses on")
+args.add_argument("--vup", nargs=3, type=float,
+                  default=[0.0, 1.0, 0.0],
+                  help="view 'up' direction")
 args = args.parse_args()
 if args.debug:
   logging.getLogger().setLevel(logging.DEBUG)
@@ -73,13 +82,9 @@ glyphRep.Orient = False
 #glyphRep.LookupTable = AssignLookupTable(massNorm,'Rainbow Desaturated')
 
 rview = GetRenderView()
-rview.CameraViewUp = [0.0, 1.0, 0.0]
-rview.CameraFocalPoint = [0.0, 0.0, 0.0]
-rview.CameraClippingRange = [7.2714539725029, 17.230673836856745]
-rview.CameraPosition = [-2000.0, 100.0, 70000]
-rview.CameraFocalPoint = [-3192.246, 312.739, -523.349]
-rview.CameraFocalPoint = [-4000.246, 600.739, -523.349]
-rview.CameraPosition = [4607.79, 5063.724, 42613.160]
+rview.CameraPosition = args.eye
+rview.CameraFocalPoint = args.ref
+rview.CameraViewUp = args.vup
 if not args.axes:
   rview.CenterAxesVisibility = 0
 paraview.simple._DisableFirstRenderCameraReset()
