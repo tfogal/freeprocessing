@@ -11,7 +11,7 @@
 #include "vis.h"
 
 #ifndef NDEBUG
-# define LOG(x, ...) fprintf(stderr, x, __VA_ARGS__)
+# define LOG(x, ...) fprintf(log, x, __VA_ARGS__)
 #else
 # define LOG(x, ...) /* log function removed for release */
 #endif
@@ -75,11 +75,11 @@ waitpid_err(const pid_t pid, const int status)
     return;
   } else if(pid == -1) {
     const int err = errno; /* getpid() might change errno */
-    LOG("[%d] waitpid error: (code: %d).\n", (int)getpid(), err);
+    fprintf(stderr, "[%d] waitpid error: (code: %d).\n", (int)getpid(), err);
   }
   if(WIFEXITED(status)) {
-    LOG("[%d] child (%d) exited normally (code: %d).\n",
-        (int)getpid(), (int)pid, WEXITSTATUS(status));
+    fprintf(stderr, "[%d] child (%d) exited normally (code: %d).\n",
+            (int)getpid(), (int)pid, WEXITSTATUS(status));
     if(WEXITSTATUS(status) != 0) {
       fprintf(stderr, "[%d] bailing due to error.\n", (int)getpid());
       exit(1);
@@ -117,7 +117,7 @@ reap(pid_t pid)
 }
 
 void
-launch_vis(const char* filename)
+launch_vis(const char* filename, FILE* log)
 {
   const char* pv = getenv("PVBATCH");
   if(pv == NULL) { pv = "/usr/bin/pvbatch"; }
@@ -137,14 +137,14 @@ launch_vis(const char* filename)
    * are writable!  This basically means we must immediately exec.  Hence why
    * we fixed our environment up front. */
   if(pid == -1) {
-    fprintf(stderr, "Could not fork vis process: %d\n", errno);
+    LOG("Could not fork vis process: %d\n", errno);
     return;
   }
   if(pid == 0) {
     simplify_env();
     execl(pv, pv, "--use-offscreen-rendering", "batch.py", "-f", filename, "-g",
           NULL);
-    fprintf(stderr, "could not exec pvbatch: %d\n", errno);
+    LOG("could not exec pvbatch: %d\n", errno);
     return;
   }
   /* This is joyful.  As sigaction(2) says:

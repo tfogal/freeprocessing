@@ -11,7 +11,7 @@
 #include "vis.h"
 
 #ifndef NDEBUG
-# define LOG(x, ...) fprintf(stderr, x, __VA_ARGS__)
+# define LOG(x, ...) fprintf(logstream, x, __VA_ARGS__)
 #else
 # define LOG(x, ...) /* log function removed for release */
 #endif
@@ -22,6 +22,7 @@ typedef int (fclosefqn)(FILE*);
 static fopenfqn* fopenf = NULL;
 static fclosefqn* fclosef = NULL;
 static int pid = 0;
+static FILE* logstream;
 
 /* When the file is closed, we need the filename so we can pass it to the vis
  * code.  But we're only given the filename on open, not close.  This table
@@ -61,6 +62,26 @@ fp_init()
   fopenf = dlsym(RTLD_NEXT, "fopen");
   fclosef = dlsym(RTLD_NEXT, "fclose");
   pid = (int)getpid();
+  logstream = stderr;
+  const char* logfile = getenv("LIBSITU_LOGFILE");
+  if(logfile != NULL) {
+    logstream = fopen(logfile, "w");
+    if(logstream == NULL) {
+      fprintf(stderr, "error opening log file '%s'\n", logfile);
+      logstream = stderr;
+    }
+  }
+}
+
+__attribute__((destructor)) static void
+fp_finalize()
+{
+  if(logstream != stderr) {
+    if(fclose(logstream) != 0) {
+      fprintf(stderr, "[%d] error closing log file! log probably truncated.\n",
+              pid);
+    }
+  }
 }
 
 FILE*
@@ -118,7 +139,7 @@ fclose(FILE* fp)
     of->fp = NULL; free(of->name);
     return rv;
   }
-  launch_vis(of->name);
+  launch_vis(of->name, logstream);
   of->fp = NULL;
   free(of->name);
   return rv;
