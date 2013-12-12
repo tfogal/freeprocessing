@@ -1,25 +1,18 @@
-#define _POSIX_C_SOURCE 200112L
+#define _POSIX_C_SOURCE 200112L 
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <mpi.h>
 
-#ifdef BLAH
-# define PURE __attribute__((pure))
-#else
-# define PURE /* pure attribute removed */
-#endif
-
 #define ROOT(stmt) \
   do { \
     if(rank() == 0) { stmt; } \
   } while(0)
 
-PURE static size_t rank();
-PURE static size_t size();
-
-void rebuild_args(size_t argc, char* argv[], char** cmd, char* subv[]);
+static size_t rank();
+static size_t size();
+static void rebuild_args(size_t argc, char* argv[], char** cmd, char* subv[]);
 
 int
 main(int argc, char* argv[])
@@ -30,24 +23,17 @@ main(int argc, char* argv[])
     MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
   }
   ROOT(printf("Running on %zu procs.\n", size()));
+
   /* MPI (annoyingly) displaces the argument list by one, so rebuild it. */
   char* subv[argc]; memset(subv, 0, sizeof(char*)*argc);
   char* command;
   assert(argc > 0);
   rebuild_args((size_t)argc, argv, &command, subv);
-  if(rank() == 0) { printf("arguments for '%s':\n", command); }
-  for(size_t i=0; rank()==0 && i < (size_t)argc; ++i) {
-    printf("\t%s\n", subv[i]);
-  }
-  ROOT(printf("Spawning...\n"));
+
   MPI_Comm intercomm; /* we don't need, but MPI requires. */
   int errors[size()];
-  const char* situ="/home/tfogal/research/fp-src/shell/symbiote/libsitu.so";
-  if(setenv("LD_PRELOAD", situ, 1) != 0) {
-    fprintf(stderr, "[%zu] failed setting LD_PRELOAD env var.\n", rank());
-  }
-  if(setenv("LD_DEBUG", "1", 1) != 0) {
-    fprintf(stderr, "[%zu] failed setting LD_PRELOAD env var.\n", rank());
+  if(setenv("MEANING_OF_EVERYTHING", "42", 1) != 0) {
+    fprintf(stderr, "[%zu] failed setting env var.\n", rank());
   }
   int spawn = MPI_Comm_spawn(command, subv, (int)size(), MPI_INFO_NULL, 0,
                              MPI_COMM_WORLD, &intercomm, errors);
@@ -64,7 +50,7 @@ main(int argc, char* argv[])
   return 0;
 }
 
-PURE static size_t
+static size_t
 rank()
 {
   int rank;
@@ -72,7 +58,7 @@ rank()
   return (size_t)rank;
 }
 
-PURE static size_t
+static size_t
 size()
 {
   int size;
@@ -80,7 +66,7 @@ size()
   return (size_t)size;
 }
 
-void
+static void
 rebuild_args(size_t argc, char* argv[], char** cmd, char* subv[])
 {
   /* argv[0] is the name of this program.
