@@ -4,7 +4,7 @@ CFLAGS=-std=c99 -fPIC $(WARN) -ggdb
 # humorously, dlsym() actually violates the standard
 CFLAGS_ORIDE=-std=c99 -ggdb -fPIC -Wall -Wextra
 obj=evfork.o forkenv.o override.o csv.o simplesitu.o vis.o parenv.mpi.o \
-  runner.mpi.o
+  runner.mpi.o setenv.mpi.o
 
 all: $(obj) libfp.so libsitu.so writecsv mpiwrapper envpar mpienv situ
 
