@@ -1,4 +1,5 @@
 #define _GNU_SOURCE
+#include <assert.h>
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <stdarg.h>
@@ -15,6 +16,11 @@ typedef int (dup2fqn)(int, int);
 typedef FILE* (fopenfqn)(const char*, const char*);
 typedef int (fclosefqn)(FILE*);
 
+typedef void* MPI_Comm;
+typedef void* MPI_Info;
+typedef void* MPI_File;
+typedef int (mpi_file_openfqn)(MPI_Comm, char*, int, MPI_Info, MPI_File*);
+
 static openfqn* openf = NULL;
 static readfqn* readf = NULL;
 static writefqn* writef = NULL;
@@ -22,8 +28,9 @@ static closefqn* closef = NULL;
 static dup2fqn* dup2f = NULL;
 static fopenfqn* fopenf = NULL;
 static fclosefqn* fclosef = NULL;
+static mpi_file_openfqn* mpi_file_openf = NULL;
 
-__attribute__((constructor)) static void
+__attribute__((constructor)) void
 fp_init()
 {
   fprintf(stderr, "[%d] initializing function pointers.\n", (int)getpid());
@@ -34,6 +41,16 @@ fp_init()
   dup2f = dlsym(RTLD_NEXT, "dup2");
   fopenf = dlsym(RTLD_NEXT, "fopen");
   fclosef = dlsym(RTLD_NEXT, "fclose");
+  mpi_file_openf = dlsym(RTLD_NEXT, "MPI_File_open");
+
+  assert(openf != NULL);
+  assert(readf != NULL);
+  assert(writef != NULL);
+  assert(closef != NULL);
+  assert(dup2f != NULL);
+  assert(fopenf != NULL);
+  assert(fclosef != NULL);
+  assert(mpi_file_openf != NULL);
 }
 
 int
@@ -52,6 +69,7 @@ ssize_t
 read(int d, void* buf, size_t sz)
 {
   fprintf(stderr, "[%d] reading %zu bytes from %d...\n", (int)getpid(), sz, d);
+  assert(readf != NULL);
   return readf(d, buf, sz);
 }
 
@@ -88,4 +106,11 @@ fclose(FILE* fp)
 {
   fprintf(stderr, "[%d] closing %p\n", (int)getpid(), fp);
   return fclosef(fp);
+}
+
+int MPI_File_open(MPI_Comm comm, char *filename, int amode,
+                  MPI_Info info, MPI_File *fh)
+{
+  fprintf(stderr, "[%d] mpi_file_open '%s'\n", (int)getpid(), filename);
+  return mpi_file_openf(comm, filename, amode, info, fh);
 }

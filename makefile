@@ -4,9 +4,9 @@ CFLAGS=-std=c99 -fPIC $(WARN) -ggdb
 # humorously, dlsym() actually violates the standard
 CFLAGS_ORIDE=-std=c99 -ggdb -fPIC -Wall -Wextra
 obj=evfork.o forkenv.o override.o csv.o simplesitu.o vis.o parenv.mpi.o \
-  runner.mpi.o setenv.mpi.o
+  runner.mpi.o setenv.mpi.o open.mpi.o
 
-all: $(obj) libfp.so libsitu.so writecsv mpiwrapper envpar mpienv situ
+all: $(obj) libfp.so libsitu.so writecsv mpiwrapper envpar mpienv situ mpifopen
 
 writecsv: csv.o
 	$(CC) $^ -o $@ -ldl
@@ -21,6 +21,8 @@ mpiwrapper: runner.mpi.o
 	$(MPICC) -fPIC $^ -o $@ -ldl
 mpienv: setenv.mpi.o
 	$(MPICC) -fPIC $^ -o $@ -ldl
+mpifopen: open.mpi.o
+	$(MPICC) -fPIC $^ -o $@ -ldl
 
 envpar: parenv.mpi.o
 	$(MPICC) -fPIC $^ -o $@ -ldl
@@ -32,7 +34,8 @@ situ: forkenv.o evfork.o
 	$(CC) -fPIC $^ -o $@
 
 clean:
-	rm -f $(obj) libfp.so libsitu.so writecsv mpiwrapper envpar
+	rm -f $(obj) libfp.so libsitu.so \
+    envpar mpienv mpifopen mpiwrapper situ writecsv
 
 override.o: override.c
 	$(CC) -c $(CFLAGS_ORIDE) $^ -o $@

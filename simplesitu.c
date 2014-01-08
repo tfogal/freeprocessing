@@ -11,7 +11,14 @@
 #include "vis.h"
 
 #ifndef NDEBUG
-# define LOG(x, ...) fprintf(logstream, x, __VA_ARGS__)
+# define LOG(x, ...) \
+  do { \
+    if(logstream) { \
+      fprintf(logstream, x, __VA_ARGS__); \
+    } else { \
+      fprintf(stderr, x, __VA_ARGS__); \
+    } \
+  } while(0)
 #else
 # define LOG(x, ...) /* log function removed for release */
 #endif
@@ -19,8 +26,14 @@
 typedef FILE* (fopenfqn)(const char*, const char*);
 typedef int (fclosefqn)(FILE*);
 
+typedef void* MPI_Comm;
+typedef void* MPI_Info;
+typedef void* MPI_File;
+typedef int (mpi_file_openfqn)(MPI_Comm, char*, int, MPI_Info, MPI_File*);
+
 static fopenfqn* fopenf = NULL;
 static fclosefqn* fclosef = NULL;
+static mpi_file_openfqn* mpi_file_openf = NULL;
 static int pid = 0;
 static FILE* logstream;
 
@@ -32,8 +45,13 @@ struct openfile {
   char* name;
   FILE* fp;
 };
+struct openmpifile {
+  char* name;
+  MPI_File* fp;
+};
 #define MAX_FILES 1024
 static struct openfile files[MAX_FILES] = {{NULL, NULL}};
+static struct openmpifile mpifiles[MAX_FILES] = {{NULL, NULL}};
 
 typedef int (ofpredicate)(const struct openfile*, const void*);
 
@@ -61,6 +79,11 @@ fp_init()
   fprintf(stderr, "[%d] initializing function pointers.\n", (int)getpid());
   fopenf = dlsym(RTLD_NEXT, "fopen");
   fclosef = dlsym(RTLD_NEXT, "fclose");
+  mpi_file_openf = dlsym(RTLD_NEXT, "MPI_File_open");
+  assert(fopenf != NULL);
+  assert(fclosef != NULL);
+  assert(mpi_file_openf != NULL);
+
   pid = (int)getpid();
   logstream = stderr;
   const char* logfile = getenv("LIBSITU_LOGFILE");
@@ -115,7 +138,7 @@ fopen(const char* name, const char* mode)
    * just a NULL fp, and so we can't differentiate between the cases.  So free
    * up our string now. */
   if(of->fp == NULL) {
-    free(of->name);
+    free(of->name); of->name = NULL;
   }
   return of->fp;
 }
@@ -126,7 +149,7 @@ fclose(FILE* fp)
   LOG("[%d] closing %p\n", pid, fp);
   struct openfile* of = of_find(files, fp_of, fp);
   if(of == NULL) {
-    fprintf(stderr, "[%d] I don't know %p.  Ignoring for in situ.\n", pid, fp);
+    fprintf(stderr, "[%d] I don't know %p.  Ignoring for in-situ.\n", pid, fp);
     return fclosef(fp);
   }
   assert(of->fp == fp);
@@ -142,5 +165,37 @@ fclose(FILE* fp)
   launch_vis(of->name, logstream);
   of->fp = NULL;
   free(of->name);
+  return rv;
+}
+
+int MPI_File_open(MPI_Comm comm, char* filename, int amode,
+                  MPI_Info info, MPI_File* fh)
+{
+  fprintf(stderr, "[%d] mpi_file_open(%s, %d)\n", pid, filename, amode);
+  assert(mpi_file_openf != NULL);
+  #define MPI_MODE_WRONLY 4 /* hack! */
+  if((amode & MPI_MODE_WRONLY) == 0) {
+    fprintf(stderr, "[%d] simulation output would probably be write-only.  "
+            "File %s was opened %d, and so we are ignoring it for in-situ.\n",
+            pid, filename, amode);
+    return mpi_file_openf(comm, filename, amode, info, fh);
+  }
+  /* find an empty spot in the table for this file. */
+  struct openmpifile* of = (struct openmpifile*) of_find(
+    (struct openfile*)mpifiles, fp_of, NULL
+  );
+  if(of == NULL) { /* table full?  then just ignore it. */
+    fprintf(stderr, "[%d] out of open mpi files.  skipping '%s'\n", pid,
+            filename);
+    return mpi_file_openf(comm, filename, amode, info, fh);
+  }
+  assert(of->fp == NULL);
+  of->name = strdup(filename);
+  const int rv = mpi_file_openf(comm, filename, amode, info, fh);
+  of->fp = fh;
+  if(of->fp == NULL) {
+    free(of->name); of->name = NULL;
+  }
+
   return rv;
 }
