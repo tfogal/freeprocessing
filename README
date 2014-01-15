@@ -1,8 +1,0 @@
-It seems that the executable needs to be built as position-independent
-code for this to work.
-
-if the code is not position-independent, then
-__attribute__((constructor)) functions do not get run and thus our
-function pointers never get initialized.
-
-Fortran may work a bit differently, doesn't seem required there.

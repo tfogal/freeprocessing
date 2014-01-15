@@ -3,6 +3,7 @@
 #include <dlfcn.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <fnmatch.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -14,10 +15,12 @@
 #ifndef NDEBUG
 # define LOG(x, ...) \
   do { \
-    if(logstream) { \
-      fprintf(logstream, x, __VA_ARGS__); \
-    } else { \
-      fprintf(stderr, x, __VA_ARGS__); \
+    if(getenv("LIBSITU_DEBUG") != NULL) { \
+      if(logstream) { \
+        fprintf(logstream, x, __VA_ARGS__); \
+      } else { \
+        fprintf(stderr, x, __VA_ARGS__); \
+      } \
     } \
   } while(0)
 #else
@@ -213,14 +216,16 @@ open(const char* fn, int flags, ...)
     mode = va_arg(lst, mode_t);
     va_end(lst);
   }
+  const char* pattern = getenv("LIBSITU_FILENAME");
   if((!(flags & O_RDWR) && !(flags & O_WRONLY)) ||
      strncmp(fn, "/tmp", 4) == 0 ||
-     strncmp(fn, "/dev", 4) == 0) {
+     strncmp(fn, "/dev", 4) == 0 ||
+     (pattern != NULL && fnmatch(pattern, fn, 0) != 0)) {
     fprintf(stderr, "[%d] %s opened, but ignored by policy.\n", pid, fn);
     const int des = openf(fn, flags, mode);
     return des;
   }
-  fprintf(stderr, "[%d] posix-opening %s ...", pid, fn);
+  LOG("[%d] posix-opening %s ...", pid, fn);
   const int des = openf(fn, flags, mode);
   if(des <= 0) { /* open failed; ignoring this file. */
     fprintf(stderr, "[%d] ignoring due to open failure\n", pid);
@@ -249,7 +254,7 @@ write(int fd, const void *buf, size_t sz)
     /*fprintf(stderr, "[%d] FD %d unknown, ignoring for in situ\n", pid, fd);*/
     return writef(fd, buf, sz);
   }
-  fprintf(stderr, "[%d] writing %zu bytes to %d\n", pid, sz, fd);
+  LOG("[%d] writing %zu bytes to %d\n", pid, sz, fd);
   return writef(fd, buf, sz);
 }
 
