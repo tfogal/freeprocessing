@@ -3,6 +3,7 @@
 #include <dlfcn.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -25,12 +26,18 @@
 
 typedef FILE* (fopenfqn)(const char*, const char*);
 typedef int (fclosefqn)(FILE*);
+typedef int (openfqn)(const char*, int, ...);
+typedef ssize_t (writefqn)(int, const void*, size_t);
+typedef int (closefqn)(int);
 
 typedef void* MPI_Comm;
 typedef void* MPI_Info;
 typedef void* MPI_File;
 typedef int (mpi_file_openfqn)(MPI_Comm, char*, int, MPI_Info, MPI_File*);
 
+static openfqn* openf = NULL;
+static writefqn* writef = NULL;
+static closefqn* closef = NULL;
 static fopenfqn* fopenf = NULL;
 static fclosefqn* fclosef = NULL;
 static mpi_file_openfqn* mpi_file_openf = NULL;
@@ -45,15 +52,39 @@ struct openfile {
   char* name;
   FILE* fp;
 };
+/* keeps track of files opened using the POSIX interface. */
+struct openposixfile {
+  char* name;
+  int fd;
+};
 struct openmpifile {
   char* name;
   MPI_File* fp;
 };
 #define MAX_FILES 1024
 static struct openfile files[MAX_FILES] = {{NULL, NULL}};
+static struct openposixfile posix_files[MAX_FILES] = {{NULL, 0}};
 static struct openmpifile mpifiles[MAX_FILES] = {{NULL, NULL}};
 
 typedef int (ofpredicate)(const struct openfile*, const void*);
+typedef int (ofposixp)(const struct openposixfile*, const void*);
+
+static struct openposixfile*
+ofposix_find(struct openposixfile* arr, ofposixp* p, const void* userdata)
+{
+  for(size_t i=0; i < MAX_FILES; ++i) {
+    if(p(&arr[i], userdata)) {
+      return &arr[i];
+    }
+  }
+  return NULL;
+}
+static int
+fd_of(const struct openposixfile* f, const void* fdvoid)
+{
+  const int* fd = (const int*)fdvoid;
+  return f->fd == (*fd);
+}
 
 /* find the openfile in the 'arr'ay which matches the 'p'redicate.
  * 'userdata' is the 'p'redicate's second argument */
@@ -77,12 +108,16 @@ __attribute__((constructor)) static void
 fp_init()
 {
   fprintf(stderr, "[%d] initializing function pointers.\n", (int)getpid());
+  openf = dlsym(RTLD_NEXT, "open");
+  writef = dlsym(RTLD_NEXT, "write");
+  closef = dlsym(RTLD_NEXT, "close");
   fopenf = dlsym(RTLD_NEXT, "fopen");
   fclosef = dlsym(RTLD_NEXT, "fclose");
   mpi_file_openf = dlsym(RTLD_NEXT, "MPI_File_open");
   assert(fopenf != NULL);
+  assert(writef != NULL);
+  assert(closef != NULL);
   assert(fclosef != NULL);
-  assert(mpi_file_openf != NULL);
 
   pid = (int)getpid();
   logstream = stderr;
@@ -166,6 +201,74 @@ fclose(FILE* fp)
   of->fp = NULL;
   free(of->name);
   return rv;
+}
+
+int
+open(const char* fn, int flags, ...)
+{
+  if((!(flags & O_RDWR) && !(flags & O_WRONLY)) ||
+     strncmp(fn, "/tmp", 4) == 0 ||
+     strncmp(fn, "/dev", 4) == 0) {
+    va_list aq;
+    va_start(aq, flags);
+    fprintf(stderr, "[%d] %s opened, but ignored by policy.\n", pid, fn);
+    const int des = openf(fn, flags, aq);
+    va_end(aq);
+    return des;
+  }
+  va_list aq;
+  va_start(aq, flags);
+  fprintf(stderr, "[%d] posix-opening %s ...", pid, fn);
+  const int des = openf(fn, flags, aq);
+  va_end(aq);
+  if(des <= 0) { /* open failed; ignoring this file. */
+    fprintf(stderr, "[%d] ignoring due to open failure\n", pid);
+    return des;
+  }
+  fprintf(stderr, " -> %d\n", des);
+
+  /* need an empty entry in the table to store the return value. */
+  int empty = 0;
+  struct openposixfile* of = ofposix_find(posix_files, fd_of, &empty);
+  if(of == NULL) {
+    fprintf(stderr, "[%d] out of open files.  skipping '%s'\n", pid, fn);
+    return des;
+  }
+  assert(of->name == NULL);
+  of->name = strdup(fn);
+  of->fd = des;
+  return des;
+}
+
+ssize_t
+write(int fd, const void *buf, size_t sz)
+{
+  struct openposixfile* of = ofposix_find(posix_files, fd_of, &fd);
+  if(of == NULL) {
+    /*fprintf(stderr, "[%d] FD %d unknown, ignoring for in situ\n", pid, fd);*/
+    return writef(fd, buf, sz);
+  }
+  fprintf(stderr, "[%d] writing %zu bytes to %d\n", pid, sz, fd);
+  return writef(fd, buf, sz);
+}
+
+int
+close(int des)
+{
+  struct openposixfile* of = ofposix_find(posix_files, fd_of, &des);
+  if(of == NULL) {
+    LOG("[%d] don't know FD %d; skipping 'close' instrumentation.\n", pid, des);
+    return closef(des);
+  }
+  assert(of->name != NULL);
+  assert(of->fd == des);
+  LOG("[%d] closing %s (FD %d)\n", pid, of->name, des);
+  { /* free up rid of table entry */
+    free(of->name);
+    of->name = NULL;
+    of->fd = 0;
+  }
+  return closef(des);
 }
 
 int MPI_File_open(MPI_Comm comm, char* filename, int amode,

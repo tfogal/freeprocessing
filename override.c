@@ -15,6 +15,9 @@ typedef int (closefqn)(int);
 typedef int (dup2fqn)(int, int);
 typedef FILE* (fopenfqn)(const char*, const char*);
 typedef int (fclosefqn)(FILE*);
+typedef int (f95_st_openfqn)(void*, void*, void*, void*, void*);
+typedef void* (write_blockfqn)(void*, int);
+typedef int (f95_arwritefqn)(void*, void*, int, int, int);
 
 typedef void* MPI_Comm;
 typedef void* MPI_Info;
@@ -29,8 +32,11 @@ static dup2fqn* dup2f = NULL;
 static fopenfqn* fopenf = NULL;
 static fclosefqn* fclosef = NULL;
 static mpi_file_openfqn* mpi_file_openf = NULL;
+static f95_st_openfqn* f95_st_openf = NULL;
+static write_blockfqn* write_blockf = NULL;
+static f95_arwritefqn* f95_array_writef = NULL;
 
-__attribute__((constructor)) void
+__attribute__((constructor)) static void
 fp_init()
 {
   fprintf(stderr, "[%d] initializing function pointers.\n", (int)getpid());
@@ -42,6 +48,9 @@ fp_init()
   fopenf = dlsym(RTLD_NEXT, "fopen");
   fclosef = dlsym(RTLD_NEXT, "fclose");
   mpi_file_openf = dlsym(RTLD_NEXT, "MPI_File_open");
+  f95_st_openf = dlsym(RTLD_NEXT, "_gfortran_st_open");
+  write_blockf = dlsym(RTLD_NEXT, "write_block");
+  f95_array_writef = dlsym(RTLD_NEXT, "_gfortran_transfer_array_write");
 
   assert(openf != NULL);
   assert(readf != NULL);
@@ -50,7 +59,6 @@ fp_init()
   assert(dup2f != NULL);
   assert(fopenf != NULL);
   assert(fclosef != NULL);
-  assert(mpi_file_openf != NULL);
 }
 
 int
@@ -113,4 +121,28 @@ int MPI_File_open(MPI_Comm comm, char *filename, int amode,
 {
   fprintf(stderr, "[%d] mpi_file_open '%s'\n", (int)getpid(), filename);
   return mpi_file_openf(comm, filename, amode, info, fh);
+}
+
+int
+_gfortran_st_open(void* ptr1, void* ptr2, void* ptr3, void* ptr4, void* ptr5)
+{
+  fprintf(stderr, "[%d] gfortran_st_open(%p, %p, %p, %p, %p)\n", (int)getpid(),
+          ptr1, ptr2, ptr3, ptr4, ptr5);
+  return f95_st_openf(ptr1, ptr2, ptr3, ptr4, ptr5);
+}
+
+int
+_gfortran_transfer_array_write(void* ptr1, void* ptr2, int n1, int n2,
+                               int n3)
+{
+  fprintf(stderr, "[%d] _gfortran_transfer_array_write(%p, %p, %d, %d, "
+          "%d)\n", (int)getpid(), ptr1, ptr2, n1, n2, n3);
+  return f95_array_writef(ptr1, ptr2, n1, n2, n3);
+}
+
+void*
+write_block(void* p, int x)
+{
+  fprintf(stderr, "[%d] write_block(%p, %d)\n", (int)getpid(), p, x);
+  return write_blockf(p, x);
 }
