@@ -206,21 +206,22 @@ fclose(FILE* fp)
 int
 open(const char* fn, int flags, ...)
 {
+  mode_t mode;
+  if(flags & O_CREAT) {
+    va_list lst;
+    va_start(lst, flags);
+    mode = va_arg(lst, mode_t);
+    va_end(lst);
+  }
   if((!(flags & O_RDWR) && !(flags & O_WRONLY)) ||
      strncmp(fn, "/tmp", 4) == 0 ||
      strncmp(fn, "/dev", 4) == 0) {
-    va_list aq;
-    va_start(aq, flags);
     fprintf(stderr, "[%d] %s opened, but ignored by policy.\n", pid, fn);
-    const int des = openf(fn, flags, aq);
-    va_end(aq);
+    const int des = openf(fn, flags, mode);
     return des;
   }
-  va_list aq;
-  va_start(aq, flags);
   fprintf(stderr, "[%d] posix-opening %s ...", pid, fn);
-  const int des = openf(fn, flags, aq);
-  va_end(aq);
+  const int des = openf(fn, flags, mode);
   if(des <= 0) { /* open failed; ignoring this file. */
     fprintf(stderr, "[%d] ignoring due to open failure\n", pid);
     return des;
