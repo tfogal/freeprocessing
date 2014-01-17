@@ -11,6 +11,10 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include "vis.h"
+#include "debug.h"
+
+DECLARE_CHANNEL(writes);
+DECLARE_CHANNEL(opens);
 
 #ifndef NDEBUG
 # define LOG(x, ...) \
@@ -44,7 +48,6 @@ static closefqn* closef = NULL;
 static fopenfqn* fopenf = NULL;
 static fclosefqn* fclosef = NULL;
 static mpi_file_openfqn* mpi_file_openf = NULL;
-static int pid = 0;
 static FILE* logstream;
 
 /* When the file is closed, we need the filename so we can pass it to the vis
@@ -110,7 +113,6 @@ fp_of(const struct openfile* f, const void* fp)
 __attribute__((constructor)) static void
 fp_init()
 {
-  fprintf(stderr, "[%d] initializing function pointers.\n", (int)getpid());
   openf = dlsym(RTLD_NEXT, "open");
   writef = dlsym(RTLD_NEXT, "write");
   closef = dlsym(RTLD_NEXT, "close");
@@ -122,13 +124,12 @@ fp_init()
   assert(closef != NULL);
   assert(fclosef != NULL);
 
-  pid = (int)getpid();
   logstream = stderr;
   const char* logfile = getenv("LIBSITU_LOGFILE");
   if(logfile != NULL) {
     logstream = fopen(logfile, "w");
     if(logstream == NULL) {
-      fprintf(stderr, "error opening log file '%s'\n", logfile);
+      WARN(opens, "error opening log file '%s'\n", logfile);
       logstream = stderr;
     }
   }
@@ -139,8 +140,7 @@ fp_finalize()
 {
   if(logstream != stderr) {
     if(fclose(logstream) != 0) {
-      fprintf(stderr, "[%d] error closing log file! log probably truncated.\n",
-              pid);
+      WARN(opens, "error closing log file! log probably truncated.");
     }
   }
 }
@@ -151,21 +151,21 @@ fopen(const char* name, const char* mode)
   if(mode == NULL) { errno = EINVAL; return NULL; }
   /* are they opening it read-only?  It's not a simulation output, then. */
   if(mode[0] == 'r') {
-    LOG("[%d] open for %s is read-only; ignoring it.\n", pid, name);
+    TRACE(opens, "open for %s read-only; ignoring.", name);
     /* in that case, skip it, we don't want to keep track of it. */
     return fopenf(name, mode);
   }
   /* what about a temp file?  probably don't want to visualize those. */
   if(strncmp(name, "/tmp", 4) == 0) {
-    LOG("[%d] opening temp file (%s); ignoring.\n", pid, name);
+    TRACE(opens, "opening temp file (%s); ignoring.\n", name);
     return fopenf(name, mode);
   }
-  LOG("[%d] opening %s\n", pid, name);
+  TRACE(opens, "opening %s\n", name);
 
   /* need an empty entry in the table to store the return value. */
   struct openfile* of = of_find(files, fp_of, NULL);
   if(of == NULL) {
-    fprintf(stderr, "[%d] out of open files.  skipping '%s'\n", pid, name);
+    WARN(opens, "out of open files.  skipping '%s'", name);
     return fopenf(name, mode);
   }
   assert(of->fp == NULL);
@@ -184,17 +184,17 @@ fopen(const char* name, const char* mode)
 int
 fclose(FILE* fp)
 {
-  LOG("[%d] closing %p\n", pid, fp);
+  TRACE(opens, "closing %p", fp);
   struct openfile* of = of_find(files, fp_of, fp);
   if(of == NULL) {
-    fprintf(stderr, "[%d] I don't know %p.  Ignoring for in-situ.\n", pid, fp);
+    TRACE(opens, "I don't know %p.  Ignoring for in-situ.", fp);
     return fclosef(fp);
   }
   assert(of->fp == fp);
   assert(of->name != NULL);
   const int rv = fclosef(fp);
   if(rv != 0) {
-    LOG("[%d] close failure! (%d)\n", pid, rv);
+    WARN(opens, "close failure! (%d)", rv);
     /* bail without doing vis; the file is invalid anyway, and the vis tool's
      * error message[s] will just obscure ours. */
     of->fp = NULL; free(of->name);
@@ -221,23 +221,23 @@ open(const char* fn, int flags, ...)
      strncmp(fn, "/tmp", 4) == 0 ||
      strncmp(fn, "/dev", 4) == 0 ||
      (pattern != NULL && fnmatch(pattern, fn, 0) != 0)) {
-    fprintf(stderr, "[%d] %s opened, but ignored by policy.\n", pid, fn);
+    TRACE(opens, "%s opened, but ignored by policy.", fn);
     const int des = openf(fn, flags, mode);
     return des;
   }
-  LOG("[%d] posix-opening %s ...", pid, fn);
   const int des = openf(fn, flags, mode);
   if(des <= 0) { /* open failed; ignoring this file. */
-    fprintf(stderr, "[%d] ignoring due to open failure\n", pid);
+    TRACE(opens, "posix-opening %s ignored due to open failure", fn);
     return des;
+  } else {
+    TRACE(opens, "posix-opening %s...", fn);
   }
-  fprintf(stderr, " -> %d\n", des);
 
   /* need an empty entry in the table to store the return value. */
   int empty = 0;
   struct openposixfile* of = ofposix_find(posix_files, fd_of, &empty);
   if(of == NULL) {
-    fprintf(stderr, "[%d] out of open files.  skipping '%s'\n", pid, fn);
+    WARN(opens, "out of open files.  skipping '%s'", fn);
     return des;
   }
   assert(of->name == NULL);
@@ -251,10 +251,9 @@ write(int fd, const void *buf, size_t sz)
 {
   struct openposixfile* of = ofposix_find(posix_files, fd_of, &fd);
   if(of == NULL) {
-    /*fprintf(stderr, "[%d] FD %d unknown, ignoring for in situ\n", pid, fd);*/
     return writef(fd, buf, sz);
   }
-  LOG("[%d] writing %zu bytes to %d\n", pid, sz, fd);
+  TRACE(writes, "writing %zu bytes to %d", sz, fd);
   return writef(fd, buf, sz);
 }
 
@@ -263,12 +262,12 @@ close(int des)
 {
   struct openposixfile* of = ofposix_find(posix_files, fd_of, &des);
   if(of == NULL) {
-    LOG("[%d] don't know FD %d; skipping 'close' instrumentation.\n", pid, des);
+    TRACE(opens, "don't know FD %d; skipping 'close' instrumentation.", des);
     return closef(des);
   }
   assert(of->name != NULL);
   assert(of->fd == des);
-  LOG("[%d] closing %s (FD %d)\n", pid, of->name, des);
+  TRACE(opens, "closing %s (FD %d)", of->name, des);
   { /* free up rid of table entry */
     free(of->name);
     of->name = NULL;
@@ -280,13 +279,13 @@ close(int des)
 int MPI_File_open(MPI_Comm comm, char* filename, int amode,
                   MPI_Info info, MPI_File* fh)
 {
-  fprintf(stderr, "[%d] mpi_file_open(%s, %d)\n", pid, filename, amode);
+  TRACE(opens, "mpi_file_open(%s, %d)", filename, amode);
   assert(mpi_file_openf != NULL);
   #define MPI_MODE_WRONLY 4 /* hack! */
   if((amode & MPI_MODE_WRONLY) == 0) {
-    fprintf(stderr, "[%d] simulation output would probably be write-only.  "
-            "File %s was opened %d, and so we are ignoring it for in-situ.\n",
-            pid, filename, amode);
+    TRACE(opens, "simulation output would probably be write-only.  "
+          "File %s was opened %d, and so we are ignoring it for in-situ.\n",
+          filename, amode);
     return mpi_file_openf(comm, filename, amode, info, fh);
   }
   /* find an empty spot in the table for this file. */
@@ -294,8 +293,7 @@ int MPI_File_open(MPI_Comm comm, char* filename, int amode,
     (struct openfile*)mpifiles, fp_of, NULL
   );
   if(of == NULL) { /* table full?  then just ignore it. */
-    fprintf(stderr, "[%d] out of open mpi files.  skipping '%s'\n", pid,
-            filename);
+    WARN(opens, "out of open mpi files.  skipping '%s'\n", filename);
     return mpi_file_openf(comm, filename, amode, info, fh);
   }
   assert(of->fp == NULL);

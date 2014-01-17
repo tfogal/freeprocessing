@@ -1,5 +1,5 @@
 MPICC=mpicc
-WARN=-Wall -Wextra -pedantic
+WARN=-Wall -Wextra
 CFLAGS=-std=c99 -fPIC $(WARN) -ggdb
 FC=gfortran
 FFLAGS=$(WARN) -fPIC -ggdb
@@ -8,7 +8,7 @@ CFLAGS_ORIDE=-std=c99 -ggdb -fPIC -Wall -Wextra
 LDFLAGS=-Wl,--no-allow-shlib-undefined -Wl,--no-undefined
 LDLIBS=-ldl
 obj=evfork.o forkenv.o override.o csv.o simplesitu.o vis.o parenv.mpi.o \
-  runner.mpi.o setenv.mpi.o open.mpi.o binaryio.o
+  runner.mpi.o setenv.mpi.o open.mpi.o binaryio.o debug.o
 
 all: $(obj) libfp.so libsitu.so writecsv mpiwrapper envpar mpienv situ \
   mpifopen f95-write-array
@@ -19,8 +19,8 @@ writecsv: csv.o
 libfp.so: override.o
 	$(CC) -fPIC -shared $^ -o $@ $(LDFLAGS) $(LDLIBS)
 
-libsitu.so: simplesitu.o vis.o
-	$(CC) -fPIC -shared $^ -o $@ -ldl
+libsitu.so: debug.o simplesitu.o vis.o
+	$(CC) -fPIC -shared $^ -o $@ $(LDFLAGS) $(LDLIBS)
 
 mpiwrapper: runner.mpi.o
 	$(MPICC) -fPIC $^ -o $@ $(LDLIBS)
