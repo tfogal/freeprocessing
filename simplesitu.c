@@ -33,7 +33,6 @@ static closefqn* closef = NULL;
 static fopenfqn* fopenf = NULL;
 static fclosefqn* fclosef = NULL;
 static mpi_file_openfqn* mpi_file_openf = NULL;
-static FILE* logstream;
 
 /* When the file is closed, we need the filename so we can pass it to the vis
  * code.  But we're only given the filename on open, not close.  This table
@@ -108,26 +107,6 @@ fp_init()
   assert(writef != NULL);
   assert(closef != NULL);
   assert(fclosef != NULL);
-
-  logstream = stderr;
-  const char* logfile = getenv("LIBSITU_LOGFILE");
-  if(logfile != NULL) {
-    logstream = fopen(logfile, "w");
-    if(logstream == NULL) {
-      WARN(opens, "error opening log file '%s'\n", logfile);
-      logstream = stderr;
-    }
-  }
-}
-
-__attribute__((destructor)) static void
-fp_finalize()
-{
-  if(logstream != stderr) {
-    if(fclose(logstream) != 0) {
-      WARN(opens, "error closing log file! log probably truncated.");
-    }
-  }
 }
 
 FILE*
@@ -185,7 +164,7 @@ fclose(FILE* fp)
     of->fp = NULL; free(of->name);
     return rv;
   }
-  launch_vis(of->name, logstream);
+  launch_vis(of->name, stderr);
   of->fp = NULL;
   free(of->name);
   return rv;
