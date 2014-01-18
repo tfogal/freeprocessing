@@ -16,21 +16,6 @@
 DECLARE_CHANNEL(writes);
 DECLARE_CHANNEL(opens);
 
-#ifndef NDEBUG
-# define LOG(x, ...) \
-  do { \
-    if(getenv("LIBSITU_DEBUG") != NULL) { \
-      if(logstream) { \
-        fprintf(logstream, x, __VA_ARGS__); \
-      } else { \
-        fprintf(stderr, x, __VA_ARGS__); \
-      } \
-    } \
-  } while(0)
-#else
-# define LOG(x, ...) /* log function removed for release */
-#endif
-
 typedef FILE* (fopenfqn)(const char*, const char*);
 typedef int (fclosefqn)(FILE*);
 typedef int (openfqn)(const char*, int, ...);
