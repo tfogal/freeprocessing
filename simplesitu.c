@@ -117,7 +117,7 @@ nbytes(enum DataType dt)
   return 0;
 }
 #define MAX_LIBRARIES 128U
-static struct teelib transferlibs[MAX_LIBRARIES] = {{0}};
+static struct teelib transferlibs[MAX_LIBRARIES] = {{0,0,{1,1,1},NULL,NULL}};
 
 typedef bool (tlpredicate)(const struct teelib*, const void*);
 static bool
