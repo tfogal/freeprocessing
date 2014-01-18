@@ -6,11 +6,51 @@ point, it looks for all of your `write` calls and does its magic.
 Environment
 ===========
 
-  * `LIBSITU_DEBUG`: set it to any value to enable debug output.
-  * `LIBSITU_LOGFILE`: set it to a filename and the library will put its
-  debugging output to this file.
+  * `LIBSITU_DEBUG`: used to selectively enable debug information.  See
+  below for more info.
   * `LIBSITU_FILENAME`: set it equal to a shell-like pattern, and the
   library will only instrument files that match the pattern.
+
+Debug Channel Settings
+======================
+
+The symbiont has a set of unique debug channels.  Generally these are
+all related to a specific feature, such as investigating when files are
+opened, or when data is transferred, or other information.
+
+In addition, each channel has a set of *class*es, which might loosely
+be thought of as severity.  So you can, for example, turn on only the
+warnings from a particular channel, or only the errors.
+
+The way one configures these channels is through the
+`LIBSITU_DEBUG` environment variable.  The general form is `channel
+name=[+-]class[,...]`, e.g.:
+
+  opens=+warn
+
+which says to enable warnings on the channel `opens`.  Multiple class
+specifications are separated by commas:
+
+  opens=+trace,-warn
+
+Multiple channels are delimited by semicolons:
+
+  opens=+trace,-warn;writes=+trace
+
+The currently defined channels are:
+
+  * `opens`: all `open`-esque calls, along with their `close`
+  counterparts.
+  * `writes`: all `write`-esque calls.
+
+The currently defined classes are:
+
+  * `err`: errors which almost certainly indicate a bug in either the
+  symbiont or the host program.
+  * `warn`: generally anomalous conditions which might not be a
+  problem, such as an internal table filling up.
+  * `trace`: notification *when* a call occurs, in a manner similar to
+  `strace(1)` or `ltrace(1)`.
 
 Notes
 =====
