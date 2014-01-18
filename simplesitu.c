@@ -97,6 +97,7 @@ fp_of(const struct openfile* f, const void* fp)
 enum DataType { FLOAT32=0, FLOAT64 };
 typedef void (tfqn)(unsigned, const size_t dims[3], const void* buf,
                     size_t n);
+typedef void (cfqn)(unsigned, const size_t dims[3]);
 /* a library to load and exec as we move data, tee-style. */
 struct teelib {
   char* pattern;
@@ -104,6 +105,7 @@ struct teelib {
   size_t dims[3];
   void* lib;
   tfqn* transfer;
+  cfqn* finish;
 };
 /* sizeof(), but takes our type instead of a 'real' type. */
 static size_t
@@ -116,8 +118,8 @@ nbytes(enum DataType dt)
   assert(false);
   return 0;
 }
-#define MAX_LIBRARIES 128U
-static struct teelib transferlibs[MAX_LIBRARIES] = {{0,0,{1,1,1},NULL,NULL}};
+#define MAX_FREEPROCS 128U
+static struct teelib transferlibs[MAX_FREEPROCS] = {{0,0,{1,1,1},NULL,NULL,NULL}};
 
 typedef bool (tlpredicate)(const struct teelib*, const void*);
 static bool
@@ -176,6 +178,14 @@ load_processors(struct teelib* tlibs, const char* cfgfile)
     ERR(opens, "failed loading 'exec' function from %s: %s", libname,
         dlerror());
   }
+  dlerror();
+  lib->finish = dlsym(lib->lib, "finish");
+  if(NULL == lib->finish) {
+    /* just a warning; this function isn't required. */
+    WARN(opens, "failed loading 'finish' function from %s: %s", libname,
+         dlerror());
+  }
+  dlerror();
   if(strncasecmp(typename, "float32", 7) == 0) { lib->type = FLOAT32;
   } else if(strncasecmp(typename, "float64", 7) == 0) { lib->type = FLOAT64;
   } else {
@@ -190,7 +200,7 @@ load_processors(struct teelib* tlibs, const char* cfgfile)
 __attribute__((destructor)) static void
 free_processors() /* ha, ha */
 {
-  for(size_t i=0 ; i < MAX_LIBRARIES; ++i) {
+  for(size_t i=0 ; i < MAX_FREEPROCS; ++i) {
     if(transferlibs[i].pattern != NULL) {
       assert(transferlibs[i].lib); /* can't have pattern w/o lib. */
       if(dlclose(transferlibs[i].lib) != 0) {
@@ -215,9 +225,11 @@ fp_init()
   assert(writef != NULL);
   assert(closef != NULL);
   assert(fclosef != NULL);
+
+  /* look for a config file and load libraries. */
+  load_processors(transferlibs, "situ.cfg");
 }
 
-#if 1
 FILE*
 fopen(const char* name, const char* mode)
 {
@@ -253,7 +265,6 @@ fopen(const char* name, const char* mode)
   }
   return of->fp;
 }
-#endif
 
 int
 fclose(FILE* fp)
@@ -327,10 +338,7 @@ write(int fd, const void *buf, size_t sz)
   if(of == NULL) {
     return writef(fd, buf, sz);
   }
-  /* look for a config file and load libraries. */
-  FIXME(opens, "don't just load every time, use a dirty flag");
-  load_processors(transferlibs, "situ.cfg");
-  const struct teelib* tl = tl_find(transferlibs, MAX_LIBRARIES, patternmatch,
+  const struct teelib* tl = tl_find(transferlibs, MAX_FREEPROCS, patternmatch,
                                     of->name);
   if(tl) {
     TRACE(writes, "writing %zu bytes to %d", sz, fd);
@@ -350,6 +358,13 @@ close(int des)
   assert(of->name != NULL);
   assert(of->fd == des);
   TRACE(opens, "closing %s (FD %d)", of->name, des);
+
+  struct teelib* tl = tl_find(transferlibs, MAX_FREEPROCS, patternmatch,
+                              of->name);
+  if(tl && tl->finish) {
+    tl->finish(tl->type, tl->dims);
+  }
+
   { /* free up rid of table entry */
     free(of->name);
     of->name = NULL;
