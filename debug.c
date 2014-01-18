@@ -29,7 +29,7 @@ static const char* C_RED    = "\033[01;31m";
 static const char* C_YELLOW = "\033[01;33m";
 __attribute__((unused)) static const char* C_GREEN  = "\033[01;32m";
 __attribute__((unused)) static const char* C_MAG    = "\033[01;35m";
-__attribute__((unused)) static const char* C_LBLUE  = "\033[01;36m";
+static const char* C_LBLUE  = "\033[01;36m";
 __attribute__((unused)) static const char* C_WHITE  = "\033[01;27m";
 
 static const char*
@@ -40,6 +40,7 @@ color(const enum SymbiontChanClass cls)
     case SymbiontTrace: return C_WHITE;
     case SymbiontWarn: return C_YELLOW;
     case SymbiontErr: return C_RED;
+    case SymbiontFixme: return C_LBLUE;
   }
   assert(false);
   return C_NORM;
@@ -52,7 +53,8 @@ symb_dbg(enum SymbiontChanClass type, const struct symbdbgchannel* channel,
   va_list args;
   va_start(args, format);
   if(dbgchannel_enabled(channel, type)) {
-    printf("%s[%ld](%s) ", color(type), pid, func);
+    const char* fixit = type==SymbiontFixme ? "-FIXME" : "";
+    printf("%s[%ld](%s%s) ", color(type), pid, func, fixit);
     vprintf(format, args);
     printf("%s\n", C_NORM);
   }
@@ -67,6 +69,7 @@ name_class(const char* name)
   if(strncmp(name, "err", 3) == 0) { return SymbiontErr; }
   if(strncmp(name, "warn", 4) == 0) { return SymbiontWarn; }
   if(strncmp(name, "trace", 5) == 0) { return SymbiontTrace; }
+  if(strncmp(name, "fixme", 5) == 0) { return SymbiontFixme; }
   /* hack.  what do we do if they give us a class that isn't defined?  well,
    * since we use this to find the flag's position by bit-shifting, let's just
    * do something we know will shit off the end of our flag sizes.  that way,

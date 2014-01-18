@@ -1,3 +1,14 @@
+/* Debugging for symbiont execution.  Example usage:
+ *
+ *   DECLARE_CHANNEL(stuff);
+ *   TRACE(stuff, "is happening!");
+ *   ERR(stuff, "something really bad happened.");
+ *   WARN(stuff, "i think something's wrong?");
+ *
+ * The user could enable / disable the above channel by setting the
+ * LIBSITU_DEBUG environment variable:
+ *
+ *   export LIBSITU_DEBUG="stuff=+err,-warn,+trace" */
 #ifndef FP_SYMBIONT_DEBUG_H
 #define FP_SYMBIONT_DEBUG_H 1
 
@@ -8,6 +19,7 @@ enum SymbiontChanClass {
   SymbiontErr=0,
   SymbiontWarn,
   SymbiontTrace,
+  SymbiontFixme,
 };
 
 struct symbdbgchannel {
@@ -15,7 +27,10 @@ struct symbdbgchannel {
   char name[32];
 };
 
-#define DEFAULT_CHFLAGS (1 << SymbiontErr) | (1 << SymbiontWarn)
+#define DEFAULT_CHFLAGS \
+  (1 << SymbiontErr) | (1 << SymbiontWarn) | (1 << SymbiontFixme)
+/* creates a new debug channel.  debug channels are private to implementation,
+ * and should not be declared in header files. */
 #define DECLARE_CHANNEL(ch) \
   static struct symbdbgchannel symb_chn_##ch = { DEFAULT_CHFLAGS, #ch }; \
   __attribute__((constructor)) static void \
@@ -30,6 +45,8 @@ struct symbdbgchannel {
   symb_dbg(SymbiontErr, &symb_chn_##ch, __FUNCTION__, args)
 #define WARN(ch, args...) \
   symb_dbg(SymbiontWarn, &symb_chn_##ch, __FUNCTION__, args)
+#define FIXME(ch, args...) \
+  symb_dbg(SymbiontFixme, &symb_chn_##ch, __FUNCTION__, args)
 
 /* for internal use only. */
 extern void symb_dbg(enum SymbiontChanClass, const struct symbdbgchannel*,
