@@ -33,7 +33,7 @@ struct symbdbgchannel {
  * and should not be declared in header files. */
 #define DECLARE_CHANNEL(ch) \
   static struct symbdbgchannel symb_chn_##ch = { DEFAULT_CHFLAGS, #ch }; \
-  __attribute__((constructor)) static void \
+  __attribute__((constructor(200))) static void \
   ch_init_##ch() { \
     const char* dbg_ = getenv("LIBSITU_DEBUG"); \
     symb_parse_options(&symb_chn_##ch, dbg_); \

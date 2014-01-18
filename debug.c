@@ -9,7 +9,7 @@
 
 static long pid = -1;
 static bool color_enabled = false;
-__attribute__((constructor)) static void
+__attribute__((constructor(101))) static void
 fp_dbg_init()
 {
   pid = (int) getpid();
