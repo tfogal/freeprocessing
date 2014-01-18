@@ -2,3 +2,8 @@ libfp.so
 libsitu.so
 writecsv
 mpiwrapper
+situ
+mpienv
+mpifopen
+f95-write-array
+envpar
