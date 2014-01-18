@@ -7,3 +7,4 @@ mpienv
 mpifopen
 f95-write-array
 envpar
+libecho.so

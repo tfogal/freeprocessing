@@ -94,6 +94,114 @@ fp_of(const struct openfile* f, const void* fp)
   return f->fp == fp;
 }
 
+enum DataType { FLOAT32=0, FLOAT64 };
+typedef void (tfqn)(unsigned, const size_t dims[3], const void* buf,
+                    size_t n);
+/* a library to load and exec as we move data, tee-style. */
+struct teelib {
+  char* pattern;
+  enum DataType type;
+  size_t dims[3];
+  void* lib;
+  tfqn* transfer;
+};
+/* sizeof(), but takes our type instead of a 'real' type. */
+static size_t
+nbytes(enum DataType dt)
+{
+  switch(dt) {
+    case FLOAT32: return 4;
+    case FLOAT64: return 8;
+  }
+  assert(false);
+  return 0;
+}
+#define MAX_LIBRARIES 128U
+static struct teelib transferlibs[MAX_LIBRARIES] = {{0}};
+
+typedef bool (tlpredicate)(const struct teelib*, const void*);
+static bool
+patternmatch(const struct teelib* tl, const void* thing)
+{
+  const char* match = (const char*)thing;
+  return fnmatch(tl->pattern, match, 0) == 0;
+}
+
+static struct teelib*
+tl_find(struct teelib* libs, size_t n, tlpredicate* p,
+        const void* userdata)
+{
+  for(size_t i=0; i < n && libs[i].pattern; ++i) {
+    if(p(&libs[i], userdata)) {
+      return &libs[i];
+    }
+  }
+  return NULL;
+}
+
+static void
+load_processors(struct teelib* tlibs, const char* cfgfile)
+{
+  FILE* fp = fopen(cfgfile, "r");
+  if(fp == NULL) { /* no config file; not much to do, then. */
+    WARN(opens, "config file '%s' not available, no vis to be done.", cfgfile);
+    return;
+  }
+  if(ferror(fp)) { ERR(opens, "ferr in '%s' cfg", cfgfile); }
+  if(feof(fp)) { ERR(opens, "eof in '%s' cfg", cfgfile); }
+
+  FIXME(opens, "loop and load all processors");
+  struct teelib* lib = tlibs;
+  char* libname;
+  char* typename;
+  /* we're trying to parse something like this:
+   * '*stuff* { type: float32\n\tdims: 24 24 24\n\texec: libwhatever.so }' */
+  int m = fscanf(fp, "%ms { type: %ms dims: %zu %zu %zu exec: %ms }",
+                 &lib->pattern, &typename,
+                 &lib->dims[0], &lib->dims[1], &lib->dims[2], &libname);
+  if(m != 6) {
+    ERR(opens, "error loading processors (%d)", errno);
+  }
+  TRACE(opens, "processor '%s' { %s, %zu %zu %zu, %s }", lib->pattern,
+        typename, lib->dims[0], lib->dims[1], lib->dims[2], libname);
+  dlerror();
+  lib->lib = dlopen(libname, RTLD_LAZY | RTLD_LOCAL | RTLD_DEEPBIND);
+  if(NULL == lib->lib) {
+    ERR(opens, "failed loading processor for %s ('%s')", lib->pattern,
+        libname);
+  }
+  dlerror();
+  lib->transfer = dlsym(lib->lib, "exec");
+  if(NULL == lib->transfer) {
+    ERR(opens, "failed loading 'exec' function from %s: %s", libname,
+        dlerror());
+  }
+  if(strncasecmp(typename, "float32", 7) == 0) { lib->type = FLOAT32;
+  } else if(strncasecmp(typename, "float64", 7) == 0) { lib->type = FLOAT64;
+  } else {
+    WARN(opens, "unhandled data type '%s' in processor", typename);
+  }
+  free(typename);
+  free(libname);
+
+  fclose(fp);
+}
+
+__attribute__((destructor)) static void
+free_processors() /* ha, ha */
+{
+  for(size_t i=0 ; i < MAX_LIBRARIES; ++i) {
+    if(transferlibs[i].pattern != NULL) {
+      assert(transferlibs[i].lib); /* can't have pattern w/o lib. */
+      if(dlclose(transferlibs[i].lib) != 0) {
+        WARN(opens, "error closing '%s' library.", transferlibs[i].pattern);
+      }
+      free(transferlibs[i].pattern);
+      transferlibs[i].pattern = NULL;
+    }
+  }
+}
+
 __attribute__((constructor)) static void
 fp_init()
 {
@@ -109,6 +217,7 @@ fp_init()
   assert(fclosef != NULL);
 }
 
+#if 1
 FILE*
 fopen(const char* name, const char* mode)
 {
@@ -144,6 +253,7 @@ fopen(const char* name, const char* mode)
   }
   return of->fp;
 }
+#endif
 
 int
 fclose(FILE* fp)
@@ -217,7 +327,15 @@ write(int fd, const void *buf, size_t sz)
   if(of == NULL) {
     return writef(fd, buf, sz);
   }
-  TRACE(writes, "writing %zu bytes to %d", sz, fd);
+  /* look for a config file and load libraries. */
+  FIXME(opens, "don't just load every time, use a dirty flag");
+  load_processors(transferlibs, "situ.cfg");
+  const struct teelib* tl = tl_find(transferlibs, MAX_LIBRARIES, patternmatch,
+                                    of->name);
+  if(tl) {
+    TRACE(writes, "writing %zu bytes to %d", sz, fd);
+    tl->transfer(tl->type, tl->dims, buf, sz/nbytes(tl->type));
+  }
   return writef(fd, buf, sz);
 }
 
