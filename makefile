@@ -8,10 +8,11 @@ CFLAGS_ORIDE=-std=c99 -ggdb -fPIC -Wall -Wextra
 LDFLAGS=-Wl,--no-allow-shlib-undefined -Wl,--no-undefined
 LDLIBS=-ldl
 obj=evfork.o forkenv.o override.o csv.o simplesitu.o vis.o parenv.mpi.o \
-  runner.mpi.o setenv.mpi.o open.mpi.o binaryio.o debug.o echo.o
+  runner.mpi.o setenv.mpi.o open.mpi.o binaryio.o debug.o echo.o \
+  writebin.mpi.o
 
 all: $(obj) libfp.so libsitu.so writecsv mpiwrapper envpar mpienv situ \
-  mpifopen f95-write-array libecho.so
+  mpifopen f95-write-array libecho.so libmpitee.so
 
 writecsv: csv.o
 	$(CC) $^ -o $@ $(LDLIBS)
@@ -24,6 +25,9 @@ libsitu.so: debug.o simplesitu.o vis.o
 
 libecho.so: echo.o
 	$(CC) -fPIC -shared $^ -o $@ $(LDFLAGS) $(LDLIBS)
+
+libmpitee.so: writebin.mpi.o
+	$(MPICC) -fPIC -shared $^ -o $@ $(LDFLAGS) $(LDLIBS)
 
 mpiwrapper: runner.mpi.o
 	$(MPICC) -fPIC $^ -o $@ $(LDLIBS)
@@ -45,7 +49,7 @@ f95-write-array: binaryio.o
 	$(FC) $^ -o $@
 
 clean:
-	rm -f $(obj) libfp.so libsitu.so libecho.so \
+	rm -f $(obj) libfp.so libsitu.so libecho.so libmpitee.so \
     envpar mpienv mpifopen mpiwrapper situ writecsv f95-write-array
 
 override.o: override.c

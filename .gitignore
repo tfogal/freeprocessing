@@ -8,3 +8,4 @@ mpifopen
 f95-write-array
 envpar
 libecho.so
+libmpitee.so
