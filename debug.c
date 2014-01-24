@@ -12,8 +12,12 @@ static bool color_enabled = false;
 __attribute__((constructor(101))) static void
 fp_dbg_init()
 {
-  pid = (int) getpid();
+  pid = (long) getpid();
   color_enabled = isatty(fileno(stdout));
+#if 0
+  fprintf(stderr, "debugging setup: pid %ld, %s color\n", pid,
+          color_enabled ? "" : "no");
+#endif
 }
 
 static bool
