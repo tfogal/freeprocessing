@@ -10,25 +10,28 @@ LDFLAGS:=-Wl,--no-undefined
 LDLIBS=-ldl
 obj=evfork.o forkenv.o override.o csv.o simplesitu.o vis.o parenv.mpi.o \
   runner.mpi.o setenv.mpi.o open.mpi.o binaryio.o debug.o echo.o \
-  writebin.mpi.o
+  writebin.mpi.o netz.mpi.o
 
 all: $(obj) libfp.so libsitu.so writecsv mpiwrapper envpar mpienv situ \
-  mpifopen f95-write-array libecho.so libmpitee.so
+  mpifopen f95-write-array libecho.so libmpitee.so libnetz.so
 
 writecsv: csv.o
 	$(CC) $^ -o $@ $(LDLIBS)
 
 libfp.so: override.o
-	$(CC) -fPIC -shared $^ -o $@ $(LDFLAGS) $(LDLIBS)
+	$(CC) -ggdb -fPIC -shared $^ -o $@ $(LDFLAGS) $(LDLIBS)
 
 libsitu.so: debug.o simplesitu.o vis.o
-	$(CC) -fPIC -shared $^ -o $@ $(LDFLAGS) $(LDLIBS)
+	$(CC) -ggdb -fPIC -shared $^ -o $@ $(LDFLAGS) $(LDLIBS)
 
 libecho.so: echo.o
 	$(CC) -fPIC -shared $^ -o $@ $(LDFLAGS) $(LDLIBS)
 
 libmpitee.so: writebin.mpi.o
 	$(MPICC) -fPIC -shared $^ -o $@ $(LDFLAGS) $(LDLIBS)
+
+libnetz.so: netz.mpi.o
+	$(MPICC) -ggdb -fPIC -shared $^ -o $@ $(LDFLAGS) $(LDLIBS)
 
 mpiwrapper: runner.mpi.o
 	$(MPICC) -fPIC $^ -o $@ $(LDLIBS)
