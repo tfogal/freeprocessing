@@ -13,8 +13,9 @@
 #include "vis.h"
 #include "debug.h"
 
-DECLARE_CHANNEL(writes);
+DECLARE_CHANNEL(generic);
 DECLARE_CHANNEL(opens);
+DECLARE_CHANNEL(writes);
 
 typedef FILE* (fopenfqn)(const char*, const char*);
 typedef int (fclosefqn)(FILE*);
@@ -212,9 +213,11 @@ free_processors() /* ha, ha */
   }
 }
 
-__attribute__((constructor)) static void
+__attribute__((constructor(200))) static void
 fp_init()
 {
+  TRACE(generic, "[%ld (%ld)] loading fqn pointers..\n", (long)getpid(),
+        (long)getppid());
   openf = dlsym(RTLD_NEXT, "open");
   writef = dlsym(RTLD_NEXT, "write");
   closef = dlsym(RTLD_NEXT, "close");
