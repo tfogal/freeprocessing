@@ -6,6 +6,7 @@ FFLAGS=$(WARN) -fPIC -ggdb
 # humorously, dlsym() actually violates the standard
 CFLAGS_ORIDE=-std=c99 -ggdb -fPIC -Wall -Wextra
 LDFLAGS=-Wl,--no-allow-shlib-undefined -Wl,--no-undefined
+LDFLAGS:=-Wl,--no-undefined
 LDLIBS=-ldl
 obj=evfork.o forkenv.o override.o csv.o simplesitu.o vis.o parenv.mpi.o \
   runner.mpi.o setenv.mpi.o open.mpi.o binaryio.o debug.o echo.o \
