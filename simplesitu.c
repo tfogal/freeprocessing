@@ -233,6 +233,9 @@ fp_init()
 
   /* look for a config file and load libraries. */
   load_processors(transferlibs, "situ.cfg");
+
+  /* make sure we don't instrument any more children. */
+  unsetenv("LD_PRELOAD");
 }
 
 FILE*
