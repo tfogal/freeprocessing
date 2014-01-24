@@ -11,6 +11,17 @@ Environment
   * `LIBSITU_FILENAME`: set it equal to a shell-like pattern, and the
   library will only instrument files that match the pattern.
 
+Forking
+-------
+
+There can be issues forking processes.  This includes using `system`.
+Therefore, the library unsets `LD_PRELOAD` during initialization, so
+that it will not instrument any child processes.
+
+For the most part, this is what you want.  However, this may cause
+problems if you have a complicated loading procedure (valgrind comes to
+mind).
+
 Debug Channel Settings
 ======================
 
