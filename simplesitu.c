@@ -95,7 +95,7 @@ fp_of(const struct openfile* f, const void* fp)
   return f->fp == fp;
 }
 
-enum DataType { FLOAT32=0, FLOAT64 };
+enum DataType { FLOAT32=0, FLOAT64, ASCII };
 typedef void (tfqn)(unsigned, const size_t dims[3], const void* buf,
                     size_t n);
 typedef void (cfqn)(unsigned, const size_t dims[3]);
@@ -115,6 +115,7 @@ nbytes(enum DataType dt)
   switch(dt) {
     case FLOAT32: return 4;
     case FLOAT64: return 8;
+    case ASCII: return 1;
   }
   assert(false);
   return 0;
@@ -189,6 +190,7 @@ load_processors(struct teelib* tlibs, const char* cfgfile)
   dlerror();
   if(strncasecmp(typename, "float32", 7) == 0) { lib->type = FLOAT32;
   } else if(strncasecmp(typename, "float64", 7) == 0) { lib->type = FLOAT64;
+  } else if(strncasecmp(typename, "ascii", 5) == 0) { lib->type = ASCII;
   } else {
     WARN(opens, "unhandled data type '%s' in processor", typename);
   }
@@ -272,7 +274,8 @@ fopen(const char* name, const char* mode)
 int
 fclose(FILE* fp)
 {
-  TRACE(opens, "closing %p", fp);
+  assert(fclosef != NULL); /* only happens if fqn pointers don't load. */
+  TRACE(opens, "fclosing %p", fp);
   struct openfile* of = of_find(files, fp_of, fp);
   if(of == NULL) {
     TRACE(opens, "I don't know %p.  Ignoring for in-situ.", fp);
@@ -358,9 +361,12 @@ close(int des)
     TRACE(opens, "don't know FD %d; skipping 'close' instrumentation.", des);
     return closef(des);
   }
-  assert(of->name != NULL);
+  TRACE(opens, "closing %s (FD %d [%d])", of->name, des, of->fd);
   assert(of->fd == des);
-  TRACE(opens, "closing %s (FD %d)", of->name, des);
+  if(of->name == NULL) { /* don't bother, not a real file? */
+    WARN(opens, "null filename!?");
+    return closef(des);
+  }
 
   struct teelib* tl = tl_find(transferlibs, MAX_FREEPROCS, patternmatch,
                               of->name);
