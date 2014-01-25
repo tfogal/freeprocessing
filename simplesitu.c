@@ -15,6 +15,7 @@
 
 DECLARE_CHANNEL(generic);
 DECLARE_CHANNEL(opens);
+DECLARE_CHANNEL(freeproc);
 DECLARE_CHANNEL(writes);
 
 typedef FILE* (fopenfqn)(const char*, const char*);
@@ -125,22 +126,61 @@ static struct teelib transferlibs[MAX_FREEPROCS] = {{0,0,{1,1,1},NULL,NULL,NULL}
 
 typedef bool (tlpredicate)(const struct teelib*, const void*);
 static bool
-patternmatch(const struct teelib* tl, const void* thing)
+patternmatch(const struct teelib* tl, const char* match)
 {
-  const char* match = (const char*)thing;
   return fnmatch(tl->pattern, match, 0) == 0;
 }
 
-static struct teelib*
-tl_find(struct teelib* libs, size_t n, tlpredicate* p,
-        const void* userdata)
+static bool
+load_processor(FILE* from, struct teelib* lib)
 {
-  for(size_t i=0; i < n && libs[i].pattern; ++i) {
-    if(p(&libs[i], userdata)) {
-      return &libs[i];
-    }
+  char* libname;
+  char* typename;
+  /* we're trying to parse something like this:
+   * '*stuff* { type: float32\n\tdims: 24 24 24\n\texec: libwhatever.so }' */
+  FIXME(freeproc, "switch language to just have an ID, no semantics.  "
+        "rely on semantics coming from somewhere else.");
+  int m = fscanf(from, "%ms { type: %ms dims: %zu %zu %zu exec: %ms }",
+                 &lib->pattern, &typename,
+                 &lib->dims[0], &lib->dims[1], &lib->dims[2], &libname);
+  if(m == -1 && feof(from)) { return false; }
+  if(m != 6) {
+    ERR(freeproc, "only matched %d, error loading processors (%d)", m, errno);
+    return false;
   }
-  return NULL;
+  TRACE(freeproc, "processor '%s' { %s, %zu %zu %zu, %s }", lib->pattern,
+        typename, lib->dims[0], lib->dims[1], lib->dims[2], libname);
+  dlerror();
+  lib->lib = dlopen(libname, RTLD_LAZY | RTLD_LOCAL | RTLD_DEEPBIND);
+  if(NULL == lib->lib) {
+    ERR(freeproc, "failed loading processor for %s ('%s')", lib->pattern,
+        libname);
+    return false;
+  }
+  dlerror();
+  lib->transfer = dlsym(lib->lib, "exec");
+  if(NULL == lib->transfer) {
+    ERR(freeproc, "failed loading 'exec' function from %s: %s", libname,
+        dlerror());
+    return false;
+  }
+  dlerror();
+  lib->finish = dlsym(lib->lib, "finish");
+  if(NULL == lib->finish) {
+    /* just a warning; this function isn't required. */
+    WARN(freeproc, "failed loading 'finish' function from %s: %s", libname,
+         dlerror());
+  }
+  dlerror();
+  if(strncasecmp(typename, "float32", 7) == 0) { lib->type = FLOAT32;
+  } else if(strncasecmp(typename, "float64", 7) == 0) { lib->type = FLOAT64;
+  } else if(strncasecmp(typename, "ascii", 5) == 0) { lib->type = ASCII;
+  } else {
+    WARN(freeproc, "unhandled data type '%s' in processor", typename);
+  }
+  free(typename);
+  free(libname);
+  return true;
 }
 
 static void
@@ -151,51 +191,16 @@ load_processors(struct teelib* tlibs, const char* cfgfile)
     WARN(opens, "config file '%s' not available, no vis to be done.", cfgfile);
     return;
   }
-  if(ferror(fp)) { ERR(opens, "ferr in '%s' cfg", cfgfile); }
-  if(feof(fp)) { ERR(opens, "eof in '%s' cfg", cfgfile); }
+  if(ferror(fp)) { ERR(freeproc, "ferr in '%s' cfg", cfgfile); }
+  if(feof(fp)) { ERR(freeproc, "eof in '%s' cfg", cfgfile); }
 
-  FIXME(opens, "loop and load all processors");
-  struct teelib* lib = tlibs;
-  char* libname;
-  char* typename;
-  /* we're trying to parse something like this:
-   * '*stuff* { type: float32\n\tdims: 24 24 24\n\texec: libwhatever.so }' */
-  int m = fscanf(fp, "%ms { type: %ms dims: %zu %zu %zu exec: %ms }",
-                 &lib->pattern, &typename,
-                 &lib->dims[0], &lib->dims[1], &lib->dims[2], &libname);
-  if(m != 6) {
-    ERR(opens, "error loading processors (%d)", errno);
+  for(size_t i=0; !feof(fp) && i < MAX_FREEPROCS; ++i) {
+    if(!load_processor(fp, &tlibs[i]) && !feof(fp)) {
+      WARN(freeproc, "loading processor failed, ignoring it...");
+      break;
+    }
+    if(feof(fp)) { break; }
   }
-  TRACE(opens, "processor '%s' { %s, %zu %zu %zu, %s }", lib->pattern,
-        typename, lib->dims[0], lib->dims[1], lib->dims[2], libname);
-  dlerror();
-  lib->lib = dlopen(libname, RTLD_LAZY | RTLD_LOCAL | RTLD_DEEPBIND);
-  if(NULL == lib->lib) {
-    ERR(opens, "failed loading processor for %s ('%s')", lib->pattern,
-        libname);
-  }
-  dlerror();
-  lib->transfer = dlsym(lib->lib, "exec");
-  if(NULL == lib->transfer) {
-    ERR(opens, "failed loading 'exec' function from %s: %s", libname,
-        dlerror());
-  }
-  dlerror();
-  lib->finish = dlsym(lib->lib, "finish");
-  if(NULL == lib->finish) {
-    /* just a warning; this function isn't required. */
-    WARN(opens, "failed loading 'finish' function from %s: %s", libname,
-         dlerror());
-  }
-  dlerror();
-  if(strncasecmp(typename, "float32", 7) == 0) { lib->type = FLOAT32;
-  } else if(strncasecmp(typename, "float64", 7) == 0) { lib->type = FLOAT64;
-  } else if(strncasecmp(typename, "ascii", 5) == 0) { lib->type = ASCII;
-  } else {
-    WARN(opens, "unhandled data type '%s' in processor", typename);
-  }
-  free(typename);
-  free(libname);
 
   fclose(fp);
 }
@@ -347,13 +352,28 @@ write(int fd, const void *buf, size_t sz)
   if(of == NULL) {
     return writef(fd, buf, sz);
   }
-  const struct teelib* tl = tl_find(transferlibs, MAX_FREEPROCS, patternmatch,
-                                    of->name);
-  if(tl) {
-    TRACE(writes, "writing %zu bytes to %d", sz, fd);
-    tl->transfer(tl->type, tl->dims, buf, sz/nbytes(tl->type));
+  for(size_t i=0; i < MAX_FREEPROCS && transferlibs[i].pattern; ++i) {
+    const struct teelib* tl = &transferlibs[i];
+    if(patternmatch(tl, of->name)) {
+      tl->transfer(tl->type, tl->dims, buf, sz/nbytes(tl->type));
+    }
   }
-  return writef(fd, buf, sz);
+  TRACE(writes, "writing %zu bytes to %d", sz, fd);
+  /* It will cause us a lot of problems if a write ends up being short, and the
+   * application then resubmits the next part of the partial write.  So,
+   * iterate and make sure we avoid any partial writes. */
+  {
+    ssize_t written = 0;
+    do {
+      errno=0;
+      ssize_t bytes = writef(fd, ((const char*)buf)+written, sz-written);
+      if(bytes == -1 && errno == EINTR) { continue; }
+      if(bytes == -1 && written == 0) { return -1; }
+      if(bytes == -1) { return written; }
+      written += bytes;
+    } while((size_t)written < sz);
+    return written;
+  }
 }
 
 int
@@ -371,10 +391,11 @@ close(int des)
     return closef(des);
   }
 
-  struct teelib* tl = tl_find(transferlibs, MAX_FREEPROCS, patternmatch,
-                              of->name);
-  if(tl && tl->finish) {
-    tl->finish(tl->type, tl->dims);
+  for(size_t i=0; i < MAX_FREEPROCS && transferlibs[i].pattern; ++i) {
+    const struct teelib* tl = &transferlibs[i];
+    if(patternmatch(tl, of->name)) {
+      tl->finish(tl->type, tl->dims);
+    }
   }
 
   { /* free up rid of table entry */
