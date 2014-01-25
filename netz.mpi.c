@@ -163,8 +163,17 @@ exec(unsigned dtype, const size_t dims[3], const void* buf, size_t n)
   if(NULL == bin) {
     start();
   }
-  if(fwrite(buf, 1, n, bin) != n) {
-    fprintf(stderr, "%s: short write?\n", __FILE__);
+  assert(bin != NULL);
+  errno = 0;
+  const size_t written = fwrite(buf, 1, n, bin);
+  if(written != n) {
+    fprintf(stderr, "%s: write should be %zu, short: %zu? errno=%d\n", __FILE__,
+            n, written, errno);
+    if(ferror(bin)) {
+      fprintf(stderr, "%s: binfile is in error.\n", __FILE__);
+    } else {
+      fprintf(stderr, "%s: binfile is OK.\n", __FILE__);
+    }
     exit(EXIT_FAILURE);
   }
 }
