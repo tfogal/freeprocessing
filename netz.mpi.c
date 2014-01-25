@@ -126,7 +126,8 @@ read_header(const char *filename)
         errno = 0;
         bytes = getline(&line, &llen, fp);
         if(bytes == -1) {
-          fprintf(stderr, "error in the middle of field parsing; very bad!\n");
+          fprintf(stderr, "error in the middle of field parsing; "
+                  "is nF wrong?!\n");
           exit(EXIT_FAILURE);
         }
         rv.flds[field].name = strdup(strip(&line));
