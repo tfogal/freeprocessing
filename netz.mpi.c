@@ -164,18 +164,26 @@ exec(unsigned dtype, const size_t dims[3], const void* buf, size_t n)
     start();
   }
   assert(bin != NULL);
+  if(ferror(bin)) {
+    MPI_Abort(MPI_COMM_WORLD, (long)getpid());
+  }
+  assert(!ferror(bin));
+  fprintf(stderr, "[%ld] about to write %zu bytes..\n", (long)getpid(), n);
   errno = 0;
   const size_t written = fwrite(buf, 1, n, bin);
   if(written != n) {
-    fprintf(stderr, "%s: write should be %zu, short: %zu? errno=%d\n", __FILE__,
-            n, written, errno);
+    long pid = (long)getpid();
+    fprintf(stderr, "[%ld] %s: write should be %zu, short: %zu? errno=%d\n",
+            pid, __FILE__, n, written, errno);
     if(ferror(bin)) {
-      fprintf(stderr, "%s: binfile is in error.\n", __FILE__);
+      fprintf(stderr, "[%ld] %s: binfile is in error.\n", pid, __FILE__);
     } else {
-      fprintf(stderr, "%s: binfile is OK.\n", __FILE__);
+      fprintf(stderr, "[%ld] %s: binfile is OK.\n", pid, __FILE__);
     }
     exit(EXIT_FAILURE);
   }
+  fprintf(stderr, "[%ld] finished write of %zu bytes\n", (long)getpid(), n);
+  MPI_Barrier(MPI_COMM_WORLD);
 }
 
 static void
@@ -199,5 +207,6 @@ finish(unsigned dtype, const size_t dims[3])
   }
   if(bin && fclose(bin) != 0) {
     fprintf(stderr, "%s: error closing file!\n", __FILE__);
+    bin = NULL;
   }
 }
