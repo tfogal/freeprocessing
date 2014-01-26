@@ -2,11 +2,15 @@
 #define _GNU_SOURCE
 #include <assert.h>
 #include <errno.h>
+#include <fnmatch.h>
 #include <dlfcn.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <mpi.h>
+
+#include <sys/types.h>
+#include <unistd.h>
 
 struct field {
   char* name;
@@ -29,6 +33,17 @@ rank()
   int rnk;
   MPI_Comm_rank(MPI_COMM_WORLD, &rnk);
   return (size_t)rnk;
+}
+
+static void
+wait_for_debugger()
+{
+  if(rank() == 0) {
+    volatile int x = 0;
+    printf("[%ld] Waiting for debugger...\n", (long)getpid());
+    while(x == 0) { ; }
+  }
+  MPI_Barrier(MPI_COMM_WORLD);
 }
 
 static void
@@ -146,20 +161,16 @@ static void
 broadcast_header(struct header* hdr)
 {
   (void)hdr;
-  printf("[%zu] broadcasting header..\n", rank());
+  printf("[%zu] broadcasting header (fixme: do so)..\n", rank());
 }
 
-enum DataTypes { FLOAT32=0, FLOAT64, ASCII };
-
 void
-exec(unsigned dtype, const size_t dims[3], const void* buf, size_t n)
+exec(const char* fn, const void* buf, size_t n)
 {
-  if(dtype == ASCII) {
-    assert(dims[0] == 1 && dims[1] == 1 && dims[2] == 1);
-    return; /* we parse it when the file is closed, easier that way. */
+  if(fnmatch("*header*", fn, 0) == 0) {
+    return; /* parse header when file is closed, not during write. */
   }
-  /* PsiPhi data should always be float32 */
-  assert(dtype == FLOAT32);
+  assert(fnmatch("*Restart*", fn, 0) == 0);
   if(NULL == bin) {
     start();
   }
@@ -183,30 +194,21 @@ exec(unsigned dtype, const size_t dims[3], const void* buf, size_t n)
     exit(EXIT_FAILURE);
   }
   fprintf(stderr, "[%ld] finished write of %zu bytes\n", (long)getpid(), n);
+  assert(!ferror(bin));
   MPI_Barrier(MPI_COMM_WORLD);
 }
 
-static void
-wait_for_debugger()
-{
-  volatile int x = 0;
-  printf("[%ld] Waiting for debugger...\n", (long)getpid());
-  while(x == 0) { ; }
-}
-
 void
-finish(unsigned dtype, const size_t dims[3])
+finish(const char* fn)
 {
-  if(dtype == ASCII) {
+  if(fnmatch("*header*", fn, 0) == 0) {
     fprintf(stderr, "[%zu] header time\n", rank());
-    assert(dims[0] == 1 && dims[1] == 1 && dims[2] == 1);
     hdr = read_header("RESTART/header.txt");
     print_header(hdr);
-    /* wait_for_debugger(); */
     return;
   }
   if(bin && fclose(bin) != 0) {
     fprintf(stderr, "%s: error closing file!\n", __FILE__);
-    bin = NULL;
   }
+  bin = NULL;
 }
