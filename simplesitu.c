@@ -96,35 +96,18 @@ fp_of(const struct openfile* f, const void* fp)
   return f->fp == fp;
 }
 
-enum DataType { FLOAT32=0, FLOAT64, ASCII };
-typedef void (tfqn)(unsigned, const size_t dims[3], const void* buf,
-                    size_t n);
-typedef void (cfqn)(unsigned, const size_t dims[3]);
+typedef void (tfqn)(const char* fn, const void* buf, size_t n);
+typedef void (cfqn)(const char* fn);
 /* a library to load and exec as we move data, tee-style. */
 struct teelib {
   char* pattern;
-  enum DataType type;
-  size_t dims[3];
   void* lib;
   tfqn* transfer;
   cfqn* finish;
 };
-/* sizeof(), but takes our type instead of a 'real' type. */
-static size_t
-nbytes(enum DataType dt)
-{
-  switch(dt) {
-    case FLOAT32: return 4;
-    case FLOAT64: return 8;
-    case ASCII: return 1;
-  }
-  assert(false);
-  return 0;
-}
 #define MAX_FREEPROCS 128U
-static struct teelib transferlibs[MAX_FREEPROCS] = {{0,0,{1,1,1},NULL,NULL,NULL}};
+static struct teelib transferlibs[MAX_FREEPROCS] = {{NULL,NULL,NULL,NULL}};
 
-typedef bool (tlpredicate)(const struct teelib*, const void*);
 static bool
 patternmatch(const struct teelib* tl, const char* match)
 {
@@ -135,21 +118,15 @@ static bool
 load_processor(FILE* from, struct teelib* lib)
 {
   char* libname;
-  char* typename;
   /* we're trying to parse something like this:
-   * '*stuff* { type: float32\n\tdims: 24 24 24\n\texec: libwhatever.so }' */
-  FIXME(freeproc, "switch language to just have an ID, no semantics.  "
-        "rely on semantics coming from somewhere else.");
-  int m = fscanf(from, "%ms { type: %ms dims: %zu %zu %zu exec: %ms }",
-                 &lib->pattern, &typename,
-                 &lib->dims[0], &lib->dims[1], &lib->dims[2], &libname);
+   * '*stuff* { exec: libnetz.so }' */
+  int m = fscanf(from, "%ms { exec: %ms }", &lib->pattern, &libname);
   if(m == -1 && feof(from)) { return false; }
-  if(m != 6) {
+  if(m != 2) {
     ERR(freeproc, "only matched %d, error loading processors (%d)", m, errno);
     return false;
   }
-  TRACE(freeproc, "processor '%s' { %s, %zu %zu %zu, %s }", lib->pattern,
-        typename, lib->dims[0], lib->dims[1], lib->dims[2], libname);
+  TRACE(freeproc, "processor '%s' { %s }", lib->pattern, libname);
   dlerror();
   lib->lib = dlopen(libname, RTLD_LAZY | RTLD_LOCAL | RTLD_DEEPBIND);
   if(NULL == lib->lib) {
@@ -172,13 +149,6 @@ load_processor(FILE* from, struct teelib* lib)
          dlerror());
   }
   dlerror();
-  if(strncasecmp(typename, "float32", 7) == 0) { lib->type = FLOAT32;
-  } else if(strncasecmp(typename, "float64", 7) == 0) { lib->type = FLOAT64;
-  } else if(strncasecmp(typename, "ascii", 5) == 0) { lib->type = ASCII;
-  } else {
-    WARN(freeproc, "unhandled data type '%s' in processor", typename);
-  }
-  free(typename);
   free(libname);
   return true;
 }
@@ -315,11 +285,15 @@ open(const char* fn, int flags, ...)
     mode = va_arg(lst, mode_t);
     va_end(lst);
   }
-  const char* pattern = getenv("LIBSITU_FILENAME");
-  if((!(flags & O_RDWR) && !(flags & O_WRONLY)) ||
+  bool matches = false;
+  for(size_t i=0; i < MAX_FREEPROCS && transferlibs[i].pattern; ++i) {
+    if(patternmatch(&transferlibs[i], fn)) {
+      matches = true;
+    }
+  }
+  if((!(flags & O_RDWR) && !(flags & O_WRONLY)) || !matches ||
      strncmp(fn, "/tmp", 4) == 0 ||
-     strncmp(fn, "/dev", 4) == 0 ||
-     (pattern != NULL && fnmatch(pattern, fn, 0) != 0)) {
+     strncmp(fn, "/dev", 4) == 0) {
     TRACE(opens, "%s opened, but ignored by policy.", fn);
     const int des = openf(fn, flags, mode);
     return des;
@@ -355,7 +329,7 @@ write(int fd, const void *buf, size_t sz)
   for(size_t i=0; i < MAX_FREEPROCS && transferlibs[i].pattern; ++i) {
     const struct teelib* tl = &transferlibs[i];
     if(patternmatch(tl, of->name)) {
-      tl->transfer(tl->type, tl->dims, buf, sz/nbytes(tl->type));
+      tl->transfer(of->name, buf, sz);
     }
   }
   TRACE(writes, "writing %zu bytes to %d", sz, fd);
@@ -394,7 +368,7 @@ close(int des)
   for(size_t i=0; i < MAX_FREEPROCS && transferlibs[i].pattern; ++i) {
     const struct teelib* tl = &transferlibs[i];
     if(patternmatch(tl, of->name)) {
-      tl->finish(tl->type, tl->dims);
+      tl->finish(of->name);
     }
   }
 
