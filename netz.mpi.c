@@ -7,10 +7,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <mpi.h>
-
 #include <sys/types.h>
 #include <unistd.h>
+#include <mpi.h>
+#include "parallel.mpi.h"
 
 struct field {
   char* name;
@@ -25,17 +25,9 @@ struct header {
 };
 
 static FILE* bin = NULL;
-static struct header hdr;
+static struct header hdr = {0};
 
-static size_t
-rank()
-{
-  int rnk;
-  MPI_Comm_rank(MPI_COMM_WORLD, &rnk);
-  return (size_t)rnk;
-}
-
-static void
+void
 wait_for_debugger()
 {
   if(rank() == 0) {
@@ -47,13 +39,55 @@ wait_for_debugger()
 }
 
 static void
-start()
+broadcast_header(struct header* hdr)
+{
+  broadcastzu(&hdr->nghost, 1);
+  broadcastzu(hdr->dims, 3);
+  /* with this broadcast it crashes; without, all is klar: */
+  broadcastzu(&hdr->nfields, 1);
+  if(rank() != 0) {
+    hdr->flds = calloc(hdr->nfields, sizeof(struct field));
+    printf("allocated %zu fields: %p\n", hdr->nfields, hdr->flds);
+  }
+  for(size_t i=0; i < hdr->nfields; ++i) {
+    size_t len;
+    if(rank() == 0) { len = strlen(hdr->flds[i].name); }
+    broadcastzu(&len, 1);
+    if(rank() != 0) { hdr->flds[i].name = calloc(len+1, sizeof(char)); }
+    broadcasts(hdr->flds[i].name, len);
+    broadcastzu(&hdr->flds[i].offset, 1);
+  }
+  broadcastzu(hdr->nbricks, 3);
+}
+
+static void
+print_header(const struct header hdr)
+{
+  printf("%zu ghost cells per dim\n", hdr.nghost);
+  printf("brick size: %zu x %zu x %zu\n", hdr.dims[0], hdr.dims[1], hdr.dims[2]);
+  printf("%zu x %zu x %zu bricks\n", hdr.nbricks[0], hdr.nbricks[1],
+         hdr.nbricks[2]);
+  printf("%zu fields:\n", hdr.nfields);
+  for(size_t i=0; i < hdr.nfields; ++i) {
+    printf("\t%s at offset %25zu\n", hdr.flds[i].name, hdr.flds[i].offset);
+  }
+}
+
+static void
+tjfstart()
 {
   assert(bin == NULL);
   char fname[256];
   snprintf(fname, 256, "tjfbin.%zu", rank());
   bin = fopen(fname, "wb");
   assert(bin);
+
+  /* when we are starting the binary file, we know that we are done with the
+   * ascii data descriptor. */
+  broadcast_header(&hdr);
+  if(rank() != 0) {
+    print_header(hdr);
+  }
 }
 
 /* strips a string.  returns the stripped string, but also modifies it. */
@@ -77,19 +111,6 @@ parse_uint(const char* s)
     abort();
   }
   return (size_t)rv;
-}
-
-static void
-print_header(const struct header hdr)
-{
-  printf("%zu ghost cells per dim\n", hdr.nghost);
-  printf("brick size: %zu x %zu x %zu\n", hdr.dims[0], hdr.dims[1], hdr.dims[2]);
-  printf("%zu x %zu x %zu bricks\n", hdr.nbricks[0], hdr.nbricks[1],
-         hdr.nbricks[2]);
-  printf("%zu fields:\n", hdr.nfields);
-  for(size_t i=0; i < hdr.nfields; ++i) {
-    printf("\t%s at offset %25zu\n", hdr.flds[i].name, hdr.flds[i].offset);
-  }
 }
 
 static struct header
@@ -129,7 +150,6 @@ read_header(const char *filename)
     } else if(strncasecmp(line, "nF", 2) == 0) {
       rv.nfields = parse_uint(line+3);
       rv.flds = calloc(sizeof(struct field), rv.nfields);
-      printf("fixme need provision for freeing the field array\n");
     } else if(strncasecmp(line, "dimsI", 5) == 0) {
       rv.nbricks[0]= parse_uint(line+6);
     } else if(strncasecmp(line, "dimsJ", 5) == 0) {
@@ -139,6 +159,7 @@ read_header(const char *filename)
     } else if(strncasecmp(line, "FieldNames", 10) == 0) {
       for(size_t i=0; i < rv.nfields; ++i) {
         errno = 0;
+        free(line); line = NULL;
         bytes = getline(&line, &llen, fp);
         if(bytes == -1) {
           fprintf(stderr, "error in the middle of field parsing; "
@@ -146,22 +167,32 @@ read_header(const char *filename)
           exit(EXIT_FAILURE);
         }
         rv.flds[field].name = strdup(strip(&line));
-        printf("fixme need something to free up the field names\n");
         rv.flds[field].offset = rv.dims[0]*rv.dims[1]*rv.dims[2]*sizeof(float)*
                                 field;
         field++;
       }
     }
+    free(line);
   } while(bytes > 0);
   fclose(fp);
   return rv;
 }
 
 static void
-broadcast_header(struct header* hdr)
+free_header(struct header* head)
 {
-  (void)hdr;
-  printf("[%zu] broadcasting header (fixme: do so)..\n", rank());
+  for(size_t i=0; i < head->nfields; ++i) {
+    free(head->flds[i].name);
+    head->flds[i].name = NULL;
+  }
+  free(head->flds);
+  head->flds = NULL;
+}
+
+__attribute__((destructor)) static void
+cleanup()
+{
+  free_header(&hdr);
 }
 
 void
@@ -172,39 +203,26 @@ exec(const char* fn, const void* buf, size_t n)
   }
   assert(fnmatch("*Restart*", fn, 0) == 0);
   if(NULL == bin) {
-    start();
+    tjfstart();
   }
   assert(bin != NULL);
-  if(ferror(bin)) {
-    MPI_Abort(MPI_COMM_WORLD, (long)getpid());
-  }
   assert(!ferror(bin));
-  fprintf(stderr, "[%ld] about to write %zu bytes..\n", (long)getpid(), n);
   errno = 0;
   const size_t written = fwrite(buf, 1, n, bin);
   if(written != n) {
     long pid = (long)getpid();
-    fprintf(stderr, "[%ld] %s: write should be %zu, short: %zu? errno=%d\n",
-            pid, __FILE__, n, written, errno);
-    if(ferror(bin)) {
-      fprintf(stderr, "[%ld] %s: binfile is in error.\n", pid, __FILE__);
-    } else {
-      fprintf(stderr, "[%ld] %s: binfile is OK.\n", pid, __FILE__);
-    }
-    exit(EXIT_FAILURE);
+    fprintf(stderr, "[%ld] %s: short write (%zu of %zu). errno=%d\n",
+            pid, __FILE__, written, n, errno);
+    assert(0);
   }
-  fprintf(stderr, "[%ld] finished write of %zu bytes\n", (long)getpid(), n);
   assert(!ferror(bin));
-  MPI_Barrier(MPI_COMM_WORLD);
 }
 
 void
 finish(const char* fn)
 {
   if(fnmatch("*header*", fn, 0) == 0) {
-    fprintf(stderr, "[%zu] header time\n", rank());
-    hdr = read_header("RESTART/header.txt");
-    print_header(hdr);
+    hdr = read_header(fn);
     return;
   }
   if(bin && fclose(bin) != 0) {
