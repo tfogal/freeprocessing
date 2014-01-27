@@ -3,13 +3,65 @@ This is a data transfer symbiont.  It is essentially 'tee' in library form.
 To use it, `LD_PRELOAD` the library (`libsitu.so`) into your program.  At that
 point, it looks for all of your `write` calls and does its magic.
 
+Configuration
+=============
+
+The library looks for a library named `situ.cfg`.  This library defines
+what libraries should be loaded.  The general format is basically like
+awk, except that instead of specifying the code to run, you specify a
+library that implements that code:
+
+  pattern { exec: /path/to/library.so }
+
+Where `pattern` is a shell glob and `library.so` is a library
+implementing a pre-prescribed interface (see `LIBRARIES`).  An example:
+
+  *header* { exec: ./libmine.so }
+  *.data { exec: ./libmine.so }
+  *tosend* { exec: ./libinstr.so }
+
+This defines three processing elements, `libmine` will be used whenever
+a filename which matches `*header*` or `*.data` is accessed.  *Both*
+instances get called.  The order they are called is undefined.
+
+Sharing internal memory
+-----------------------
+
+If a single library is given in multiple patterns, the matches *share*
+private variable instances.  In the above example, both `libmine.so`
+instances will access a single set of shared variables.  This allows
+you to (for instance) parse the program's header output and communicate
+such information to the part of the code which instruments the binary
+outputs.
+
+If you actually want two instances of a library, with unique internal
+variables each time, just rename one of them.  The equivalency is
+based purely on the name of the libraries, so libraries of different
+names---even if they are the exact sample implementation---will not
+share private data.
+
+Libraries
+=========
+
+Libraries need only export two functions:
+
+  1. `void exec(const char* fn, const void* buf, size_t n)`, and
+  2. `void finish(const char* fn)`
+
+The first is called anytime a file is written to.  The second is called
+whenever a file is closed.  The filename given in the first argument
+is the exact filename (not, for example, the pattern given in the
+configuration file).
+
+The symbiont attempts to take care of the issue of partial writes;
+there should be a 1-1 mapping between program `write`s and `exec`
+invocations.
+
 Environment
 ===========
 
   * `LIBSITU_DEBUG`: used to selectively enable debug information.  See
   below for more info.
-  * `LIBSITU_FILENAME`: set it equal to a shell-like pattern, and the
-  library will only instrument files that match the pattern.
 
 Forking
 -------
@@ -19,8 +71,13 @@ Therefore, the library unsets `LD_PRELOAD` during initialization, so
 that it will not instrument any child processes.
 
 For the most part, this is what you want.  However, this may cause
-problems if you have a complicated loading procedure (valgrind comes to
-mind).
+problems if you have a complicated loading procedure ("mpirun" and
+"valgrind" come to mind).  To get the code to run under MPI, you want
+the `mpirun` program to set the environment variable for you, instead
+of setting it before `mpirun` is invoked.  Some `mpirun`s let you do
+this with `-x`, e.g.:
+
+  mpirun -x LD_PRELOAD=./libsitu.so -np 4 ./myprogram
 
 Debug Channel Settings
 ======================
