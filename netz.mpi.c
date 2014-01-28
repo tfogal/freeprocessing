@@ -69,7 +69,7 @@ print_header(const struct header hdr)
          hdr.nbricks[2]);
   printf("%zu fields:\n", hdr.nfields);
   for(size_t i=0; i < hdr.nfields; ++i) {
-    printf("\t%s at offset %25zu\n", hdr.flds[i].name, hdr.flds[i].offset);
+    printf("\t%-5s at offset %25zu\n", hdr.flds[i].name, hdr.flds[i].offset);
   }
 }
 
@@ -111,6 +111,16 @@ parse_uint(const char* s)
     abort();
   }
   return (size_t)rv;
+}
+
+/* the fields from PsiPhi are padded with "_"s so that they are all the same
+ * length.  fix that padding so they are displayed nicely. */
+static void
+remove_underscores(char* str)
+{
+  for(char* s=str; *s; ++s) {
+    if(*s == '_') { *s = '\0'; break; }
+  }
 }
 
 static struct header
@@ -167,6 +177,7 @@ read_header(const char *filename)
           exit(EXIT_FAILURE);
         }
         rv.flds[field].name = strdup(strip(&line));
+        remove_underscores(rv.flds[field].name);
         rv.flds[field].offset = rv.dims[0]*rv.dims[1]*rv.dims[2]*sizeof(float)*
                                 field;
         field++;
