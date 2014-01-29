@@ -55,6 +55,12 @@ broadcasts(char* str, size_t len)
 }
 
 void
+broadcastb(bool* b, size_t n)
+{
+  MPI_Bcast(b, n, MPI_BYTE, 0, MPI_COMM_WORLD);
+}
+
+void
 allgatherf(float* f, int* rcvcount, int* displacements)
 {
   MPI_Allgatherv(MPI_IN_PLACE, 0 /* ignored  */, MPI_DATATYPE_NULL /*ignored*/,
