@@ -4,17 +4,23 @@
 #include <errno.h>
 #include <fnmatch.h>
 #include <dlfcn.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
 #include <unistd.h>
 #include <mpi.h>
+#include "debug.h"
 #include "parallel.mpi.h"
+
+DECLARE_CHANNEL(netz);
 
 struct field {
   char* name;
-  size_t offset;
+  size_t lower; /* offset of this field in bytestream */
+  size_t upper; /* final byte in stream +1 for this field */
+  bool process;  /* should we output this field? */
 };
 struct header {
   size_t nghost; /* number of ghost cells, per-dim */
@@ -25,6 +31,7 @@ struct header {
 };
 
 static FILE* bin = NULL;
+static size_t offset = 0; /* current offset in output file. */
 static struct header hdr = {0};
 
 void
@@ -55,7 +62,9 @@ broadcast_header(struct header* hdr)
     broadcastzu(&len, 1);
     if(rank() != 0) { hdr->flds[i].name = calloc(len+1, sizeof(char)); }
     broadcasts(hdr->flds[i].name, len);
-    broadcastzu(&hdr->flds[i].offset, 1);
+    broadcastzu(&hdr->flds[i].lower, 1);
+    broadcastzu(&hdr->flds[i].upper, 1);
+    broadcastb(&hdr->flds[i].process, 1);
   }
   broadcastzu(hdr->nbricks, 3);
 }
@@ -69,8 +78,55 @@ print_header(const struct header hdr)
          hdr.nbricks[2]);
   printf("%zu fields:\n", hdr.nfields);
   for(size_t i=0; i < hdr.nfields; ++i) {
-    printf("\t%-5s at offset %25zu\n", hdr.flds[i].name, hdr.flds[i].offset);
+    printf("\t%-5s at offset %25zu\n", hdr.flds[i].name, hdr.flds[i].lower);
   }
+}
+
+/* reads a field name + sets the appropriate/corresponding bit in the header. */
+static bool
+read_field_config(FILE* fp, struct header* h)
+{
+  assert(fp);
+  assert(h);
+
+  char* fld = NULL;
+  const int m = fscanf(fp, "%ms { }", &fld);
+  if(feof(fp)) {
+    TRACE(netz, "scanning config: EOF");
+    free(fld);
+    return false;
+  }
+  if(m != 1) {
+    WARN(netz, "could not match field...");
+    free(fld);
+    return false;
+  }
+  for(size_t i=0; i < h->nfields; ++i) {
+    if(strcasecmp(h->flds[i].name, fld) == 0) {
+      TRACE(netz, "will process '%s'", h->flds[i].name);
+      h->flds[i].process = 1;
+    }
+  }
+  free(fld);
+  return !feof(fp);
+}
+
+/* reads the PsiPhi configuration file.  we expect to find a bunch of field
+ * names; for each field name in the config file, set the appropriate bit in
+ * the 'struct field' within the header. */
+static void
+read_config(const char* from, struct header* h)
+{
+  FILE* cfg = fopen(from, "r");
+  if(!cfg) {
+    ERR(netz, "could not read configuration file '%s'", from);
+    return;
+  }
+  for(size_t i=0; i < h->nfields; ++i) { /* clear field configs. */
+    h->flds[i].process = 0;
+  }
+  while(read_field_config(cfg, h)) { ; }
+  fclose(cfg);
 }
 
 static void
@@ -80,6 +136,10 @@ tjfstart()
   char fname[256];
   snprintf(fname, 256, "tjfbin.%zu", rank());
   bin = fopen(fname, "wb");
+  if(!bin) {
+    ERR(netz, "could not create '%s'", fname);
+    return;
+  }
   assert(bin);
 
   /* when we are starting the binary file, we know that we are done with the
@@ -88,6 +148,8 @@ tjfstart()
   if(rank() != 0) {
     print_header(hdr);
   }
+  offset = 0;
+  read_config("psiphi.cfg", &hdr);
 }
 
 /* strips a string.  returns the stripped string, but also modifies it. */
@@ -144,8 +206,10 @@ read_header(const char *filename)
     bytes = getline(&line, &llen, fp);
     if(bytes == -1 && errno != 0) {
       fprintf(stderr, "getline err: %d\n", errno);
+      free(line);
       break;
     } else if(bytes == -1) {
+      free(line);
       break;
     }
     strip(&line);
@@ -178,8 +242,10 @@ read_header(const char *filename)
         }
         rv.flds[field].name = strdup(strip(&line));
         remove_underscores(rv.flds[field].name);
-        rv.flds[field].offset = rv.dims[0]*rv.dims[1]*rv.dims[2]*sizeof(float)*
-                                field;
+        const size_t fldsize = rv.dims[0]*rv.dims[1]*rv.dims[2]*sizeof(float);
+        rv.flds[field].lower = fldsize * field;
+        rv.flds[field].upper = rv.flds[field].lower + fldsize;
+        rv.flds[field].process = false;
         field++;
       }
     }
@@ -198,12 +264,48 @@ free_header(struct header* head)
   }
   free(head->flds);
   head->flds = NULL;
+  head->nfields = 0;
 }
 
 __attribute__((destructor)) static void
 cleanup()
 {
   free_header(&hdr);
+}
+
+#define minzu(a, b) \
+  ({ const size_t x=a; const size_t y=b; x < y ? x : y; })
+
+/* which bytes intersect with the ones we want to write?
+ * @param skip number of bytes to skip before we start writing
+ * @param nwrite number of bytes to write, maxes out at 'len'.
+ * @return true if there is a non-zero byte overlap */
+static bool
+byteintersect(const size_t lower, const size_t upper, const struct field fld,
+              size_t* skip, size_t* nwrite)
+{
+  assert(upper > 0);
+  assert(lower < upper);
+  if(upper < fld.lower || lower >= fld.upper) {
+    return false;
+  }
+  /* there is an intersection.  one of three cases: (1) the write goes beyond
+   * the field; (2) the write starts before the field; (3) the write is
+   * completely contained within the field */
+  *skip = 0;
+  *nwrite = 0;
+  if(lower > fld.lower && upper > fld.upper) {
+    *skip = 0;
+    *nwrite = fld.upper - lower;
+  } else if(lower < fld.lower && upper < fld.upper) {
+    *skip = fld.lower - lower;
+    *nwrite = upper - fld.lower;
+  } else {
+    assert(lower >= fld.lower && upper < fld.upper);
+    *skip = 0;
+    *nwrite = upper - lower;
+  }
+  return true;
 }
 
 void
@@ -218,21 +320,34 @@ exec(const char* fn, const void* buf, size_t n)
   }
   assert(bin != NULL);
   assert(!ferror(bin));
-  errno = 0;
-  const size_t written = fwrite(buf, 1, n, bin);
-  if(written != n) {
-    long pid = (long)getpid();
-    fprintf(stderr, "[%ld] %s: short write (%zu of %zu). errno=%d\n",
-            pid, __FILE__, written, n, errno);
-    assert(0);
+  for(size_t i=0; i < hdr.nfields; ++i) {
+    if(!hdr.flds[i].process) { continue; } /* only requested field. */
+    size_t skip, nbytes;
+    if(byteintersect(offset, offset+n, hdr.flds[i], &skip, &nbytes)) {
+      TRACE(netz, "writing %zu bytes [%zu:%zu] (field %s)", nbytes, offset+skip,
+            offset+skip+nbytes, hdr.flds[i].name);
+      assert(nbytes <= n);
+      assert(skip < n);
+      const char* pwrt = ((const char*)buf) + skip;
+      errno = 0;
+      const size_t written = fwrite(pwrt, 1, nbytes, bin);
+      if(written != nbytes) {
+        long pid = (long)getpid();
+        fprintf(stderr, "[%ld] %s: short write (%zu of %zu). errno=%d\n",
+                pid, __FILE__, written, n, errno);
+        assert(0);
+      }
+    }
   }
   assert(!ferror(bin));
+  offset += n;
 }
 
 void
 finish(const char* fn)
 {
   if(fnmatch("*header*", fn, 0) == 0) {
+    free_header(&hdr);
     hdr = read_header(fn);
     return;
   }

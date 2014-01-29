@@ -31,10 +31,10 @@ libecho.so: echo.o
 libmpitee.so: writebin.mpi.o
 	$(MPICC) -fPIC -shared $^ -o $@ $(LDFLAGS) $(LDLIBS)
 
-libnetz.so: netz.mpi.o parallel.mpi.o
+libnetz.so: debug.o netz.mpi.o parallel.mpi.o
 	$(MPICC) -ggdb -fPIC -shared $^ -o $@ $(LDFLAGS) $(LDLIBS)
 
-hacktest: ctest.mpi.o parallel.mpi.o netz.mpi.o
+hacktest: ctest.mpi.o debug.o parallel.mpi.o netz.mpi.o
 	$(MPICC) -fPIC $^ -o $@ $(LDLIBS)
 
 modtest: debug.o modified.o testmodified.o
