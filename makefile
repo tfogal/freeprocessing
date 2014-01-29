@@ -10,10 +10,11 @@ LDFLAGS:=-Wl,--no-undefined
 LDLIBS=-ldl
 obj=evfork.o forkenv.o override.o csv.o simplesitu.o vis.o parenv.mpi.o \
   runner.mpi.o setenv.mpi.o open.mpi.o binaryio.o debug.o echo.o \
-  writebin.mpi.o netz.mpi.o parallel.mpi.o ctest.mpi.o
+  writebin.mpi.o netz.mpi.o parallel.mpi.o ctest.mpi.o modified.o \
+  testmodified.o 
 
 all: $(obj) libfp.so libsitu.so writecsv mpiwrapper envpar mpienv situ \
-  mpifopen f95-write-array libecho.so libmpitee.so libnetz.so hacktest
+  mpifopen f95-write-array libecho.so libmpitee.so libnetz.so hacktest modtest
 
 writecsv: csv.o
 	$(CC) $^ -o $@ $(LDLIBS)
@@ -35,6 +36,9 @@ libnetz.so: netz.mpi.o parallel.mpi.o
 
 hacktest: ctest.mpi.o parallel.mpi.o netz.mpi.o
 	$(MPICC) -fPIC $^ -o $@ $(LDLIBS)
+
+modtest: debug.o modified.o testmodified.o
+	$(CC) -fPIC $^ -o $@ $(LDLIBS)
 
 mpiwrapper: runner.mpi.o
 	$(MPICC) -fPIC $^ -o $@ $(LDLIBS)
