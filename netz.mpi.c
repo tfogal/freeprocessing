@@ -30,8 +30,17 @@ struct header {
   size_t nbricks[3]; /* number of bricks, per dimension */
 };
 
-static FILE* bin = NULL;
+/* we will open any number of files---one per field they want written---and
+ * stream the binary data to those files.   this array holds those fields.
+ * NULL indicates that the simulation is not doing file I/O at the moment, or
+ * is only writing to its header file.  The array will be non-null if we're in
+ * the middle of some output files. */
+static FILE** binfield = NULL;
+/* Where we are in whatever output file we are at now.  Only tracked for the
+ * restart files.  We use this to figure out if the current write is within any
+ * of the fields the user has decided they want to see. */
 static size_t offset = 0; /* current offset in output file. */
+/* Header info is parsed when we see the first write to a restart file. */
 static struct header hdr = {0};
 
 void
@@ -132,16 +141,6 @@ read_config(const char* from, struct header* h)
 static void
 tjfstart()
 {
-  assert(bin == NULL);
-  char fname[256];
-  snprintf(fname, 256, "tjfbin.%zu", rank());
-  bin = fopen(fname, "wb");
-  if(!bin) {
-    ERR(netz, "could not create '%s'", fname);
-    return;
-  }
-  assert(bin);
-
   /* when we are starting the binary file, we know that we are done with the
    * ascii data descriptor. */
   broadcast_header(&hdr);
@@ -150,6 +149,22 @@ tjfstart()
   }
   offset = 0;
   read_config("psiphi.cfg", &hdr);
+
+  /* after reading the config, we should know how many fields we have. */
+  assert(binfield == NULL);
+  binfield = calloc(hdr.nfields, sizeof(FILE*));
+  for(size_t i=0; i < hdr.nfields; ++i) {
+    if(hdr.flds[i].process) {
+      char fname[256];
+      snprintf(fname, 256, "%s.%zu", hdr.flds[i].name, rank());
+      binfield[i] = fopen(fname, "wb");
+      if(!binfield[i]) {
+        ERR(netz, "could not create '%s'", fname);
+        return;
+      }
+    }
+  }
+  assert(binfield);
 }
 
 /* strips a string.  returns the stripped string, but also modifies it. */
@@ -169,7 +184,7 @@ parse_uint(const char* s)
   errno = 0;
   const unsigned long rv = strtoul(s, NULL, 10);
   if(errno != 0) {
-    fprintf(stderr, "error converting '%s' to unsigned number.\n", s);
+    ERR(netz, "error converting '%s' to unsigned number.\n", s);
     abort();
   }
   return (size_t)rv;
@@ -189,10 +204,11 @@ static struct header
 read_header(const char *filename)
 {
   struct header rv;
-  fprintf(stderr, "[%zu] reading header info from %s...\n", rank(), filename);
+  TRACE(netz, "[%zu] reading header from %s", rank(), filename);
   FILE* fp = fopen(filename, "r");
   if(!fp) {
-    fprintf(stderr, "[%zu] error reading header file %s\n", rank(), filename);
+    ERR(netz, "[%zu] error reading header file %s: %d", rank(), filename,
+        errno);
     return rv;
   }
   char* line;
@@ -205,7 +221,7 @@ read_header(const char *filename)
     errno = 0;
     bytes = getline(&line, &llen, fp);
     if(bytes == -1 && errno != 0) {
-      fprintf(stderr, "getline err: %d\n", errno);
+      ERR(netz, "getline error: %d", errno);
       free(line);
       break;
     } else if(bytes == -1) {
@@ -236,8 +252,7 @@ read_header(const char *filename)
         free(line); line = NULL;
         bytes = getline(&line, &llen, fp);
         if(bytes == -1) {
-          fprintf(stderr, "error in the middle of field parsing; "
-                  "is nF wrong?!\n");
+          ERR(netz, "error while processing fields; is nF wrong?!");
           exit(EXIT_FAILURE);
         }
         rv.flds[field].name = strdup(strip(&line));
@@ -315,11 +330,10 @@ exec(const char* fn, const void* buf, size_t n)
     return; /* parse header when file is closed, not during write. */
   }
   assert(fnmatch("*Restart*", fn, 0) == 0);
-  if(NULL == bin) {
+  if(NULL == binfield) {
     tjfstart();
   }
-  assert(bin != NULL);
-  assert(!ferror(bin));
+  assert(binfield != NULL);
   for(size_t i=0; i < hdr.nfields; ++i) {
     if(!hdr.flds[i].process) { continue; } /* only requested field. */
     size_t skip, nbytes;
@@ -330,16 +344,14 @@ exec(const char* fn, const void* buf, size_t n)
       assert(skip < n);
       const char* pwrt = ((const char*)buf) + skip;
       errno = 0;
-      const size_t written = fwrite(pwrt, 1, nbytes, bin);
+      const size_t written = fwrite(pwrt, 1, nbytes, binfield[i]);
       if(written != nbytes) {
-        long pid = (long)getpid();
-        fprintf(stderr, "[%ld] %s: short write (%zu of %zu). errno=%d\n",
-                pid, __FILE__, written, n, errno);
+        WARN(netz, "short write (%zu of %zu). errno=%d", written, n, errno);
         assert(0);
       }
     }
+    assert(!ferror(binfield[i]));
   }
-  assert(!ferror(bin));
   offset += n;
 }
 
@@ -351,8 +363,15 @@ finish(const char* fn)
     hdr = read_header(fn);
     return;
   }
-  if(bin && fclose(bin) != 0) {
-    fprintf(stderr, "%s: error closing file!\n", __FILE__);
+  if(binfield) {
+    for(size_t i=0; i < hdr.nfields; ++i) {
+      if(binfield[i]) {
+        if(fclose(binfield[i]) != 0) {
+          ERR(netz, "error closing field %s: %d", hdr.flds[i].name, errno);
+        }
+      }
+    }
+    free(binfield);
+    binfield = NULL;
   }
-  bin = NULL;
 }
