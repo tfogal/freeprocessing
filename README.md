@@ -74,10 +74,15 @@ For the most part, this is what you want.  However, this may cause
 problems if you have a complicated loading procedure ("mpirun" and
 "valgrind" come to mind).  To get the code to run under MPI, you want
 the `mpirun` program to set the environment variable for you, instead
-of setting it before `mpirun` is invoked.  Some `mpirun`s let you do
-this with `-x`, e.g.:
+of setting it before `mpirun` is invoked.  OpenMPI's `mpirun`s let you
+do this with `-x`, e.g.:
 
   mpirun -x LD_PRELOAD=./libsitu.so -np 4 ./myprogram
+
+For MPICH, this option is `-env` and the setting should lack the `=`
+character:
+
+  mpiexec -env LD_PRELOAD ./libsitu.so -np 4 ./myprogram
 
 Debug Channel Settings
 ======================
