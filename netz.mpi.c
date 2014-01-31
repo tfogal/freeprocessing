@@ -1,13 +1,16 @@
 #define _POSIX_C_SOURCE 201201L
 #define _GNU_SOURCE
+#include <aio.h>
 #include <assert.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <fnmatch.h>
 #include <dlfcn.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
 #include <mpi.h>
@@ -15,6 +18,8 @@
 #include "parallel.mpi.h"
 
 DECLARE_CHANNEL(netz);
+
+#define NULLIFY (void*)0xdeadbeef
 
 struct field {
   char* name;
@@ -200,6 +205,120 @@ remove_underscores(char* str)
   }
 }
 
+struct writelist {
+  size_t n;
+  struct aiocb** list;
+  size_t* srcoffset;
+};
+/* Writes are given to us as a byte range: 0 to 40000, for example.  Yet we are
+ * MPI-parallel, and each process has a piece of the final file.  The local
+ * 3D-array that process 0 has will actually end up as a series of chunks in
+ * the final file.
+ * This function takes the byte range, the size of the full domain, and the
+ * size of local chunks, and calculates the offsets that they should appear in
+ * a unified file.
+ * NOTE that this cannot completely fill in the aiocb!  In particular,
+ * it does not have access to the buffer to read from, nor the file
+ * descriptor to write to.  Callers will need to fill this information in
+ * themselves; 'srcoffset' is intended to be used as offsets into the buffer. */
+static struct writelist
+find_destination(const size_t pos[3], /* brick position of this processor */
+                 const size_t voxels[3], /* number of voxels in full domain */
+                 const size_t bsize[3] /* size of a single brick */)
+{
+  struct writelist rv;
+  rv.n = bsize[1]*bsize[2];
+  rv.list = calloc(rv.n, sizeof(struct aiocb));
+  rv.srcoffset = calloc(rv.n, sizeof(size_t));
+  for(size_t z=0; z < bsize[2]; ++z) {
+    for(size_t y=0; y < bsize[1]; ++y) {
+      const size_t x = 0; /* just for legibility */
+      const size_t tgt_z = z + (pos[2]*bsize[2]);
+      const size_t tgt_y = y + (pos[1]*bsize[1]);
+      const size_t tgt_x = x + (pos[0]*bsize[0]);
+      const off_t dstoffset = sizeof(float) * ((tgt_z * voxels[1] * voxels[0]) +
+                                               (tgt_y * voxels[0]) + tgt_x);
+      const size_t len = sizeof(float) * bsize[0];
+      const size_t i = z*bsize[1]+y;
+      /* This is a bit infuriating.  lio_listio(2) for some reason takes an
+       * array of aiocb /pointers/ instead of an array of aiocb's.  So we have
+       * to allocate *each*individual*one*.  Awful. */
+      rv.list[i] = calloc(1, sizeof(struct aiocb));
+      rv.list[i]->aio_offset = dstoffset;
+      rv.list[i]->aio_nbytes = len;
+      rv.list[i]->aio_sigevent.sigev_notify = SIGEV_NONE;
+      rv.list[i]->aio_lio_opcode = LIO_WRITE;
+      rv.srcoffset[i] = sizeof(float) * (z*bsize[1]*bsize[0] + y*bsize[0] + x);
+    }
+  }
+  return rv;
+}
+static void
+free_writelist(struct writelist wr)
+{
+  for(size_t i=0; i < wr.n; ++i) {
+    free(wr.list[i]);
+    wr.list[i] = NULLIFY;
+  }
+  free(wr.list);
+  free(wr.srcoffset);
+  wr.list = NULLIFY;
+  wr.srcoffset = NULLIFY;
+}
+
+/* reads the first 'n' bytes from the given file.  returns an (allocated)
+ * pointer to the data. */
+MALLOC static void*
+slurp(const char* fn, size_t n)
+{
+  FILE* fp = fopen(fn, "rb");
+  if(!fp) {
+    ERR(netz, "could not slurp %zu bytes of %s", n, fn);
+    return NULL;
+  }
+  void* buf = malloc(n);
+  if(buf == NULL) {
+    ERR(netz, "slurp could not alloc %zu bytes", n);
+    fclose(fp);
+    return NULL;
+  }
+  const size_t bytes = fread(buf, 1, n, fp);
+  if(bytes != n) {
+    WARN(netz, "short read (%zu bytes) slurping %s: %d", bytes, fn, errno);
+  }
+  fclose(fp);
+  return buf;
+}
+
+static void
+apply_writelist(struct writelist wl, const size_t bsize[3],
+                const char* to, const char* from)
+{
+  const int fd = open(to, O_WRONLY | O_TRUNC | O_CLOEXEC | O_CREAT,
+                      S_IWUSR | S_IRUSR | S_IRGRP);
+  if(fd == -1) {
+    ERR(netz, "open error on %s: %d.  giving up.", to, errno);
+    return;
+  }
+  char* data = slurp(from, bsize[2]*bsize[1]*bsize[0]*sizeof(float));
+  if(!data) {
+    unlink(to);
+    close(fd);
+    return;
+  }
+  if(unlink(from) != 0) {
+    WARN(netz, "could not remove brick '%s': %d", from, errno);
+  }
+  for(size_t i=0; i < wl.n; ++i) {
+    wl.list[i]->aio_fildes = fd;
+    wl.list[i]->aio_buf = data + wl.srcoffset[i];
+  }
+  if(lio_listio(LIO_WAIT, wl.list, wl.n, NULL) == -1) {
+    WARN(netz, "listio failed: %d", errno);
+  }
+  close(fd);
+}
+
 static struct header
 read_header(const char *filename)
 {
@@ -323,6 +442,41 @@ byteintersect(const size_t lower, const size_t upper, const struct field fld,
   return true;
 }
 
+static void
+to3d(const size_t proc, const size_t layout[3], size_t out[3])
+{
+  out[0] = proc % layout[0];
+  out[1] = (proc / layout[0]) % layout[1];
+  out[2] = proc / (layout[0]*layout[1]);
+}
+
+static void
+create_nhdr(const char* rawfn, const size_t voxels[3])
+{
+  char* hname = calloc(strlen(rawfn)+8, sizeof(char));
+  strcpy(hname, rawfn);
+  strcat(hname, ".nhdr");
+  FILE* fp = fopen(hname, "w");
+  if(!fp) {
+    WARN(netz, "could not create header filename");
+    return;
+  }
+  const int m = fprintf(fp,
+    "NRRD0001\n"
+    "encoding: raw\n"
+    "dimension: 3\n"
+    "type: float\n"
+    "sizes: %zu %zu %zu\n"
+    "spacings: 1 1 1\n"
+    "data file: %s\n", voxels[0], voxels[1], voxels[2], rawfn);
+  if(m < 4) {
+    WARN(netz, "conversion error creating nhdr for %s: %d", rawfn, errno);
+  }
+  if(fclose(fp) != 0) {
+    ERR(netz, "error creating .nhdr for %s", rawfn);
+  }
+}
+
 void
 exec(const char* fn, const void* buf, size_t n)
 {
@@ -338,8 +492,6 @@ exec(const char* fn, const void* buf, size_t n)
     if(!hdr.flds[i].process) { continue; } /* only requested field. */
     size_t skip, nbytes;
     if(byteintersect(offset, offset+n, hdr.flds[i], &skip, &nbytes)) {
-      TRACE(netz, "writing %zu bytes [%zu:%zu] (field %s)", nbytes, offset+skip,
-            offset+skip+nbytes, hdr.flds[i].name);
       assert(nbytes <= n);
       assert(skip < n);
       const char* pwrt = ((const char*)buf) + skip;
@@ -368,6 +520,26 @@ finish(const char* fn)
       if(binfield[i]) {
         if(fclose(binfield[i]) != 0) {
           ERR(netz, "error closing field %s: %d", hdr.flds[i].name, errno);
+        }
+        /* now each of our N processes has written a file which contains a
+         * single brick. let's merge all those bricks into a single file. */
+        const size_t voxels[3] = { /* total for the whole domain */
+          hdr.nbricks[0] * hdr.dims[0],
+          hdr.nbricks[1] * hdr.dims[1],
+          hdr.nbricks[2] * hdr.dims[2],
+        };
+        size_t bpos[3];
+        to3d(rank(), hdr.nbricks, bpos);
+        TRACE(netz, "layout(%zu): %zu %zu %zu", rank(), bpos[0], bpos[1], bpos[2]);
+        struct writelist wl = find_destination(bpos, voxels, hdr.dims);
+        char fname[256];
+        snprintf(fname, 256, "%s.%zu", hdr.flds[i].name, rank());
+        TRACE(netz, "got writelist with %zu elements. merging %s into %s",
+              wl.n, fname, hdr.flds[i].name);
+        apply_writelist(wl, hdr.dims, hdr.flds[i].name, fname);
+        free_writelist(wl);
+        if(rank() == 0) {
+          create_nhdr(hdr.flds[i].name, voxels);
         }
       }
     }

@@ -7,7 +7,7 @@ FFLAGS=$(WARN) -fPIC -ggdb
 CFLAGS_ORIDE=-std=c99 -ggdb -fPIC -Wall -Wextra
 LDFLAGS=-Wl,--no-allow-shlib-undefined -Wl,--no-undefined
 LDFLAGS:=-Wl,--no-undefined
-LDLIBS=-ldl
+LDLIBS=-ldl -lrt
 obj=evfork.o forkenv.o override.o csv.o simplesitu.o vis.o parenv.mpi.o \
   runner.mpi.o setenv.mpi.o open.mpi.o binaryio.o debug.o echo.o \
   writebin.mpi.o netz.mpi.o parallel.mpi.o ctest.mpi.o modified.o \
