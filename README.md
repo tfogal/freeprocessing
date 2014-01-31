@@ -16,9 +16,11 @@ library that implements that code:
 Where `pattern` is a shell glob and `library.so` is a library
 implementing a pre-prescribed interface (see `LIBRARIES`).  An example:
 
+```
   *header* { exec: ./libmine.so }
   *.data { exec: ./libmine.so }
   *tosend* { exec: ./libinstr.so }
+```
 
 This defines three processing elements, `libmine` will be used whenever
 a filename which matches `*header*` or `*.data` is accessed.  *Both*
