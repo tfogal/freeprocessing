@@ -193,7 +193,7 @@ free_processors() /* ha, ha */
 __attribute__((constructor(200))) static void
 fp_init()
 {
-  TRACE(generic, "[%ld (%ld)] loading fqn pointers..\n", (long)getpid(),
+  TRACE(generic, "[%ld (%ld)] loading fqn pointers..", (long)getpid(),
         (long)getppid());
   openf = dlsym(RTLD_NEXT, "open");
   writef = dlsym(RTLD_NEXT, "write");
@@ -225,10 +225,10 @@ fopen(const char* name, const char* mode)
   }
   /* what about a temp file?  probably don't want to visualize those. */
   if(strncmp(name, "/tmp", 4) == 0) {
-    TRACE(opens, "opening temp file (%s); ignoring.\n", name);
+    TRACE(opens, "opening temp file (%s); ignoring.", name);
     return fopenf(name, mode);
   }
-  TRACE(opens, "opening %s\n", name);
+  TRACE(opens, "opening %s", name);
 
   /* need an empty entry in the table to store the return value. */
   struct openfile* of = of_find(files, fp_of, NULL);
@@ -388,7 +388,7 @@ int MPI_File_open(MPI_Comm comm, char* filename, int amode,
   #define MPI_MODE_WRONLY 4 /* hack! */
   if((amode & MPI_MODE_WRONLY) == 0) {
     TRACE(opens, "simulation output would probably be write-only.  "
-          "File %s was opened %d, and so we are ignoring it for in-situ.\n",
+          "File %s was opened %d, and so we are ignoring it for in-situ.",
           filename, amode);
     return mpi_file_openf(comm, filename, amode, info, fh);
   }
@@ -397,7 +397,7 @@ int MPI_File_open(MPI_Comm comm, char* filename, int amode,
     (struct openfile*)mpifiles, fp_of, NULL
   );
   if(of == NULL) { /* table full?  then just ignore it. */
-    WARN(opens, "out of open mpi files.  skipping '%s'\n", filename);
+    WARN(opens, "out of open mpi files.  skipping '%s'", filename);
     return mpi_file_openf(comm, filename, amode, info, fh);
   }
   assert(of->fp == NULL);
