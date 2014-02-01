@@ -264,12 +264,7 @@ fclose(FILE* fp)
   const int rv = fclosef(fp);
   if(rv != 0) {
     WARN(opens, "close failure! (%d)", rv);
-    /* bail without doing vis; the file is invalid anyway, and the vis tool's
-     * error message[s] will just obscure ours. */
-    of->fp = NULL; free(of->name);
-    return rv;
   }
-  launch_vis(of->name, stderr);
   of->fp = NULL;
   free(of->name);
   return rv;
