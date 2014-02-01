@@ -13,7 +13,7 @@ __attribute__((constructor(101))) static void
 fp_dbg_init()
 {
   pid = (long) getpid();
-  color_enabled = isatty(fileno(stdout));
+  color_enabled = isatty(STDOUT_FILENO);
 #if 0
   fprintf(stderr, "debugging setup: pid %ld, %s color\n", pid,
           color_enabled ? "" : "no");
@@ -60,7 +60,7 @@ symb_dbg(enum SymbiontChanClass type, const struct symbdbgchannel* channel,
     const char* fixit = type==SymbiontFixme ? "-FIXME" : "";
     printf("%s[%ld](%s%s) ", color(type), pid, func, fixit);
     vprintf(format, args);
-    printf("%s\n", C_NORM);
+    printf("%s\n", color_enabled ? C_NORM : "");
   }
   va_end(args);
 }
