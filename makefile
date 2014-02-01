@@ -11,10 +11,11 @@ LDLIBS=-ldl -lrt
 obj=evfork.o forkenv.o override.o csv.o simplesitu.o vis.o parenv.mpi.o \
   runner.mpi.o setenv.mpi.o open.mpi.o binaryio.o debug.o echo.o \
   writebin.mpi.o netz.mpi.o parallel.mpi.o ctest.mpi.o modified.o \
-  testmodified.o 
+  testmodified.o enzo.mpi.o
 
 all: $(obj) libfp.so libsitu.so writecsv mpiwrapper envpar mpienv situ \
-  mpifopen f95-write-array libecho.so libmpitee.so libnetz.so hacktest modtest
+  mpifopen f95-write-array libecho.so libmpitee.so libnetz.so hacktest \
+  modtest libenzo.so
 
 writecsv: csv.o
 	$(CC) $^ -o $@ $(LDLIBS)
@@ -32,6 +33,9 @@ libmpitee.so: writebin.mpi.o
 	$(MPICC) -fPIC -shared $^ -o $@ $(LDFLAGS) $(LDLIBS)
 
 libnetz.so: debug.o netz.mpi.o parallel.mpi.o
+	$(MPICC) -ggdb -fPIC -shared $^ -o $@ $(LDFLAGS) $(LDLIBS)
+
+libenzo.so: debug.o enzo.mpi.o
 	$(MPICC) -ggdb -fPIC -shared $^ -o $@ $(LDFLAGS) $(LDLIBS)
 
 hacktest: ctest.mpi.o debug.o parallel.mpi.o netz.mpi.o
@@ -60,7 +64,7 @@ f95-write-array: binaryio.o
 	$(FC) $^ -o $@
 
 clean:
-	rm -f $(obj) libfp.so libsitu.so libecho.so libmpitee.so \
+	rm -f $(obj) libfp.so libsitu.so libecho.so libmpitee.so libenzo.so \
     envpar mpienv mpifopen mpiwrapper situ writecsv f95-write-array
 
 override.o: override.c
