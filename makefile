@@ -35,7 +35,7 @@ libmpitee.so: writebin.mpi.o
 libnetz.so: debug.o netz.mpi.o parallel.mpi.o
 	$(MPICC) -ggdb -fPIC -shared $^ -o $@ $(LDFLAGS) $(LDLIBS)
 
-libenzo.so: debug.o enzo.mpi.o
+libenzo.so: debug.o enzo.mpi.o parallel.mpi.o
 	$(MPICC) -ggdb -fPIC -shared $^ -o $@ $(LDFLAGS) $(LDLIBS)
 
 hacktest: ctest.mpi.o debug.o parallel.mpi.o netz.mpi.o
