@@ -9,9 +9,9 @@ LDFLAGS=-Wl,--no-allow-shlib-undefined -Wl,--no-undefined
 LDFLAGS:=-Wl,--no-undefined
 LDLIBS=-ldl -lrt
 obj=evfork.o forkenv.o override.o csv.o simplesitu.o vis.o parenv.mpi.o \
-  runner.mpi.o setenv.mpi.o open.mpi.o binaryio.o debug.o echo.o \
+  runner.mpi.o setenv.mpi.o open.mpi.o binaryio.o debug.o \
   writebin.mpi.o netz.mpi.o parallel.mpi.o ctest.mpi.o modified.o \
-  testmodified.o enzo.mpi.o
+  testmodified.o enzo.mpi.o echo.mpi.o
 
 all: $(obj) libfp.so libsitu.so writecsv mpiwrapper envpar mpienv situ \
   mpifopen f95-write-array libecho.so libmpitee.so libnetz.so hacktest \
@@ -26,8 +26,8 @@ libfp.so: override.o
 libsitu.so: debug.o simplesitu.o vis.o
 	$(CC) -ggdb -fPIC -shared $^ -o $@ $(LDFLAGS) $(LDLIBS)
 
-libecho.so: echo.o
-	$(CC) -fPIC -shared $^ -o $@ $(LDFLAGS) $(LDLIBS)
+libecho.so: debug.o echo.mpi.o parallel.mpi.o
+	$(MPICC) -fPIC -shared $^ -o $@ $(LDFLAGS) $(LDLIBS)
 
 libmpitee.so: writebin.mpi.o
 	$(MPICC) -fPIC -shared $^ -o $@ $(LDFLAGS) $(LDLIBS)
