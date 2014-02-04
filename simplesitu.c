@@ -25,6 +25,7 @@ typedef int hid_t;
 typedef unsigned long long hsize_t;
 
 typedef FILE* (fopenfqn)(const char*, const char*);
+typedef size_t (fwritefqn)(const void*, size_t, size_t, FILE*);
 typedef int (fclosefqn)(FILE*);
 typedef int (openfqn)(const char*, int, ...);
 typedef ssize_t (writefqn)(int, const void*, size_t);
@@ -49,6 +50,7 @@ static openfqn* openf = NULL;
 static writefqn* writef = NULL;
 static closefqn* closef = NULL;
 static fopenfqn* fopenf = NULL;
+static fwritefqn* fwritef = NULL;
 static fclosefqn* fclosef = NULL;
 static mpi_file_openfqn* mpi_file_openf = NULL;
 static h5fcreatefqn* h5fcreatef = NULL;
@@ -242,6 +244,7 @@ fp_init()
   writef = dlsym(RTLD_NEXT, "write");
   closef = dlsym(RTLD_NEXT, "close");
   fopenf = dlsym(RTLD_NEXT, "fopen");
+  fwritef = dlsym(RTLD_NEXT, "fwrite");
   fclosef = dlsym(RTLD_NEXT, "fclose");
   mpi_file_openf = dlsym(RTLD_NEXT, "MPI_File_open");
   h5fcreatef = dlsym(RTLD_NEXT, "H5Fcreate");
@@ -300,6 +303,25 @@ fopen(const char* name, const char* mode)
     free(of->name); of->name = NULL;
   }
   return of->fp;
+}
+
+size_t
+fwrite(const void* buf, size_t n, size_t nmemb, FILE* fp)
+{
+  assert(fwritef != NULL);
+  struct openfile* of = of_find(files, fp_of, fp);
+  if(of == NULL) {
+    TRACE(opens, "I don't know %p.  Ignoring for in-situ.", fp);
+    return fwritef(buf, n, nmemb, fp);
+  }
+  for(size_t i=0; i < MAX_FREEPROCS && transferlibs[i].pattern; ++i) {
+    const struct teelib* tl = &transferlibs[i];
+    if(patternmatch(tl, of->name)) {
+      tl->transfer(of->name, buf, n*nmemb);
+    }
+  }
+  TRACE(writes, "writing %zu*%zu bytes to %s", n,nmemb, of->name);
+  return fwritef(buf, n, nmemb, fp);
 }
 
 int
