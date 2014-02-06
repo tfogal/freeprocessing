@@ -45,19 +45,32 @@ share private data.
 Libraries
 =========
 
-Libraries need only export two functions:
+Libraries need only export one function:
 
-  1. `void exec(const char* fn, const void* buf, size_t n)`, and
-  2. `void finish(const char* fn)`
+  1. `void exec(const char* fn, const void* buf, size_t n)`
 
-The first is called anytime a file is written to.  The second is called
-whenever a file is closed.  The filename given in the first argument
-is the exact filename (not, for example, the pattern given in the
-configuration file).
+It is called anytime a file is written to.  The filename given in the
+first argument is the exact filename (not, for example, the pattern
+given in the configuration file).
 
 The symbiont attempts to take care of the issue of partial writes;
 there should be a 1-1 mapping between program `write`s and `exec`
 invocations.
+
+Libraries can optionally implement two additional functions:
+
+  2. `void grid_size(const char* fn, const size_t dims[3])`, and
+  3. `void finish(const char* fn)`
+
+`grid_size` is called directly before `exec`, in the case that the
+simulation knows the dimensions of the impending `write`.  This is only
+possible with some self-describing transport mechanisms.  If your code
+does not utilize IO middleware, this function will never be called.
+In this case, you have to provide any needed metadata yourself.  We
+recommend parsing a config file the first time `exec` is called.
+
+`finish` notifies you when the program is finished with a file or
+pattern.  Good time to clean up resources.
 
 Environment
 ===========
@@ -116,7 +129,9 @@ The currently defined channels are:
 
   * `opens`: all `open`-esque calls, along with their `close`
   counterparts.
-  * `writes`: all `write`-esque calls.
+  * `freeproc`: loading and using libraries
+  * `writes`: all `write`-esque calls. (*CAUTION*: spammy)
+  * `hdf5`: HDF5 calls of interest.
 
 The currently defined classes are:
 
