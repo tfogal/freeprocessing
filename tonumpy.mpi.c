@@ -1,6 +1,7 @@
 /* A simple freeprocessor which forwards its array into numpy and runs a
  * script, for processing there. */
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
+#include <fnmatch.h>
 #include <stdbool.h>
 #include <Python.h>
 #include <numpy/arrayobject.h>
@@ -29,6 +30,9 @@ static const char* scriptname = "vis.py";
 static FILE* script = NULL;
 /* the dimensions of the next write */
 static size_t dims[3] = {0};
+/* what timestep we're on, based on the heuristic of how many 'close's we've
+ * done. */
+static size_t timestep = 0;
 
 static void
 create_module()
@@ -91,6 +95,10 @@ grid_size(const char* fn, const size_t d[3])
 void
 exec(const char* fn, const void* buf, size_t n)
 {
+  /* Skip writes to the .cpu files; we only use those to count the timesteps. */
+  if(fnmatch("*cpu?*", fn, 0) == 0) {
+    return;
+  }
   TRACE(py, "[%zu] write %p to %s: %zu bytes", rank(), buf, fn, n);
   if(!Py_IsInitialized()) {
     WARN(py, "initializing python");
@@ -112,8 +120,11 @@ exec(const char* fn, const void* buf, size_t n)
     dims[0] = dims[1] = dims[2] = 0;
     return;
   }
+  if(0 != PyModule_AddIntConstant(fpmodule, "timestep", timestep)) {
+    WARN(py, "could not add timestep information to module.");
+  }
   if(0 != PyDict_SetItemString(fpdict, "stream", (PyObject*)ds)) {
-    fprintf(stderr, "could not add mydata to dict");
+    WARN(py, "could not add stream data to dict!");
   }
   TRACE(py, "running '%s'...", scriptname);
   rewind(script);
@@ -126,4 +137,8 @@ void
 finish(const char* fn)
 {
   TRACE(py, "[%zu] done with %s", rank(), fn);
+  if(fnmatch("*cpu?*", fn, 0) == 0) {
+    ++timestep;
+    TRACE(py, "[%zu] timestep is now %zu", rank(), timestep);
+  }
 }
