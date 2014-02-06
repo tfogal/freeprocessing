@@ -595,6 +595,7 @@ H5Dcreate1(hid_t loc, const char *name, hid_t type, hid_t space, hid_t dcpl)
       metah5[i].dset = rv;
       metah5[i].space = space;
       metah5[i].name = strdup(name);
+      break;
     }
   }
   return rv;
@@ -616,7 +617,7 @@ H5Dclose(hid_t id)
    * this hasn't been an issue for the software we've instrumented so far... */
   for(size_t i=0; i < MAX_FILES; ++i) {
     if(metah5[i].dset == id) {
-      TRACE(hdf5, "cleaning up dset %d", id);
+      TRACE(hdf5, "cleaning up dset %d (%s)", id, metah5[i].name);
       free(metah5[i].name);
       metah5[i].name = NULL;
       metah5[i].dset = -1;
