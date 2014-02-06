@@ -143,15 +143,17 @@ fp_of(const struct openfile* f, const void* fp)
 
 typedef void (tfqn)(const char* fn, const void* buf, size_t n);
 typedef void (cfqn)(const char* fn);
+typedef void (szfqn)(const char* fn, const size_t d[3]);
 /* a library to load and exec as we move data, tee-style. */
 struct teelib {
   char* pattern;
   void* lib;
   tfqn* transfer;
   cfqn* finish;
+  szfqn* gridsize;
 };
 #define MAX_FREEPROCS 128U
-static struct teelib transferlibs[MAX_FREEPROCS] = {{NULL,NULL,NULL,NULL}};
+static struct teelib transferlibs[MAX_FREEPROCS] = {{NULL,NULL,NULL,NULL,NULL}};
 
 static bool
 patternmatch(const struct teelib* tl, const char* match)
@@ -194,6 +196,12 @@ load_processor(FILE* from, struct teelib* lib)
          dlerror());
   }
   dlerror();
+  lib->gridsize = dlsym(lib->lib, "grid_size");
+  if(NULL == lib->finish) {
+    /* just a warning; this function isn't required. */
+    WARN(freeproc, "failed loading 'grid_size' function from %s: %s", libname,
+         dlerror());
+  }
   free(libname);
   return true;
 }
@@ -620,10 +628,15 @@ H5Dclose(hid_t id)
 }
 
 static void
-freeproc(const char* ptrn, const void* buf, size_t n)
+freeprocess(const char* ptrn, const void* buf, const size_t dims[3])
 {
   for(size_t i=0; i < MAX_FREEPROCS && transferlibs[i].pattern; ++i) {
     if(patternmatch(&transferlibs[i], ptrn)) {
+      if(transferlibs[i].gridsize) {
+        transferlibs[i].gridsize(ptrn, dims);
+      }
+      /* sizeof(double) is a hack here... we can pull this from HDF5 */
+      const size_t n = dims[0] * dims[1] * dims[2] * sizeof(double);
       transferlibs[i].transfer(ptrn, buf, n);
     }
   }
@@ -641,10 +654,7 @@ H5Dwrite(hid_t dset, hid_t memtype, hid_t memspace, hid_t filespace,
       TRACE(hdf5, "h-write %s [%zu %zu %zu] %p", metah5[i].name,
             spaces[sidx].dims[0], spaces[sidx].dims[1], spaces[sidx].dims[2],
             buf);
-      /* sizeof(double) is a hack here... we can pull this from HDF5 */
-      const size_t sz = spaces[sidx].dims[0] * spaces[sidx].dims[1] *
-                        spaces[sidx].dims[2] * sizeof(double);
-      freeproc(metah5[i].name, buf, sz);
+      freeprocess(metah5[i].name, buf, spaces[sidx].dims);
       break;
     }
   }
