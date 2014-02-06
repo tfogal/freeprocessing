@@ -14,3 +14,4 @@ hacktest
 modtest
 libenzo.so
 libnek.so
+libtopython.so
