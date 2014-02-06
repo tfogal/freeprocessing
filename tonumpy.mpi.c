@@ -106,6 +106,10 @@ exec(const char* fn, const void* buf, size_t n)
   }
   if(!module_initialized) {
     create_module();
+    /* add the field name as an available variable */
+    if(0 != PyModule_AddStringConstant(fpmodule, "field", fn)) {
+      WARN(py, "could not add field name to module.");
+    }
   }
   PyArrayObject* ds = NULL;
 
