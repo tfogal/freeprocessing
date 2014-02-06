@@ -53,6 +53,10 @@ create_module()
   if(PyRun_SimpleString("import freeprocessing") != 0) {
     ERR(py, "Error importing freeprocessing python module");
   }
+  /* Make "freeprocessing.rank" give the rank of the current process. */
+  if(0 != PyModule_AddIntConstant(fpmodule, "rank", rank())) {
+    WARN(py, "could not add rank information to module.");
+  }
   script = fopen(scriptname, "r");
   if(!script) {
     ERR(py, "Error opening script file '%s'", scriptname);
