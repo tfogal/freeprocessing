@@ -106,10 +106,6 @@ exec(const char* fn, const void* buf, size_t n)
   }
   if(!module_initialized) {
     create_module();
-    /* add the field name as an available variable */
-    if(0 != PyModule_AddStringConstant(fpmodule, "field", fn)) {
-      WARN(py, "could not add field name to module.");
-    }
   }
   PyArrayObject* ds = NULL;
 
@@ -124,6 +120,11 @@ exec(const char* fn, const void* buf, size_t n)
     dims[0] = dims[1] = dims[2] = 0;
     return;
   }
+  /* add the field name as an available variable */
+  if(0 != PyModule_AddStringConstant(fpmodule, "field", fn)) {
+    WARN(py, "could not add field name to module.");
+    abort();
+  }
   if(0 != PyModule_AddIntConstant(fpmodule, "timestep", timestep)) {
     WARN(py, "could not add timestep information to module.");
   }
@@ -134,6 +135,7 @@ exec(const char* fn, const void* buf, size_t n)
   rewind(script);
   if(PyRun_SimpleFile(script, scriptname) != 0) {
     ERR(py, "error running script '%s'", scriptname);
+    abort();
   }
 }
 
