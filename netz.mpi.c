@@ -26,6 +26,7 @@ struct field {
   size_t lower; /* offset of this field in bytestream */
   size_t upper; /* final byte in stream +1 for this field */
   bool out3d; /* should we output a unified 3D volume of this field? */
+  size_t slice; /* the slice to output, +1.  0 represents no slice output. */
 };
 struct header {
   size_t nghost; /* number of ghost cells, per-dim */
@@ -96,6 +97,18 @@ print_header(const struct header hdr)
   }
 }
 
+static size_t
+parse_uint(const char* s)
+{
+  errno = 0;
+  const unsigned long rv = strtoul(s, NULL, 10);
+  if(errno != 0) {
+    ERR(netz, "error converting '%s' to unsigned number.\n", s);
+    abort();
+  }
+  return (size_t)rv;
+}
+
 /* reads a field name + sets the appropriate/corresponding bit in the header. */
 static bool
 read_field_config(FILE* fp, struct header* h)
@@ -120,8 +133,16 @@ read_field_config(FILE* fp, struct header* h)
   }
   for(size_t i=0; i < h->nfields; ++i) {
     if(strcasecmp(h->flds[i].name, fld) == 0) {
-      TRACE(netz, "will create 3D vol of '%s'", h->flds[i].name);
-      h->flds[i].out3d = 1;
+      /* the config can be either "3D" or "slice=Z" */
+      if(strncasecmp(cfg, "3d", 2) == 0) {
+        TRACE(netz, "will create 3D vol of '%s'", h->flds[i].name);
+        h->flds[i].out3d = 1;
+      } else if(strncasecmp(cfg, "slice", 5) == 0) {
+        /* we use 0 to denote 'no slice'. */
+        h->flds[i].slice = parse_uint(cfg+6) + 1; /* 6 == strlen("slice=") */
+        TRACE(netz, "will write slice %zu of '%s'", h->flds[i].slice-1,
+              h->flds[i].name);
+      }
     }
   }
   free(fld);
@@ -141,6 +162,7 @@ read_config(const char* from, struct header* h)
   }
   for(size_t i=0; i < h->nfields; ++i) { /* clear field configs. */
     h->flds[i].out3d = 0;
+    h->flds[i].slice = 0;
   }
   while(read_field_config(cfg, h)) { ; }
   fclose(cfg);
@@ -184,18 +206,6 @@ strip(char** s)
     *nl = '\0';
   }
   return *s;
-}
-
-static size_t
-parse_uint(const char* s)
-{
-  errno = 0;
-  const unsigned long rv = strtoul(s, NULL, 10);
-  if(errno != 0) {
-    ERR(netz, "error converting '%s' to unsigned number.\n", s);
-    abort();
-  }
-  return (size_t)rv;
 }
 
 /* the fields from PsiPhi are padded with "_"s so that they are all the same
@@ -384,6 +394,7 @@ read_header(const char *filename)
         rv.flds[field].lower = fldsize * field;
         rv.flds[field].upper = rv.flds[field].lower + fldsize;
         rv.flds[field].out3d = false;
+        rv.flds[field].slice = 0;
         field++;
       }
     }
@@ -419,12 +430,13 @@ cleanup()
  * @param nwrite number of bytes to write, maxes out at 'len'.
  * @return true if there is a non-zero byte overlap */
 static bool
-byteintersect(const size_t lower, const size_t upper, const struct field fld,
+byteintersect(const size_t lower, const size_t upper,
+              const size_t fldlower, const size_t fldupper,
               size_t* skip, size_t* nwrite)
 {
   assert(upper > 0);
   assert(lower < upper);
-  if(upper < fld.lower || lower >= fld.upper) {
+  if(upper < fldlower || lower >= fldupper) {
     return false;
   }
   /* there is an intersection.  one of three cases: (1) the write goes beyond
@@ -432,14 +444,14 @@ byteintersect(const size_t lower, const size_t upper, const struct field fld,
    * completely contained within the field */
   *skip = 0;
   *nwrite = 0;
-  if(lower > fld.lower && upper > fld.upper) {
+  if(lower > fldlower && upper > fldupper) {
     *skip = 0;
-    *nwrite = fld.upper - lower;
-  } else if(lower < fld.lower && upper < fld.upper) {
-    *skip = fld.lower - lower;
-    *nwrite = upper - fld.lower;
+    *nwrite = fldupper - lower;
+  } else if(lower < fldlower && upper < fldupper) {
+    *skip = fldlower - lower;
+    *nwrite = upper - fldlower;
   } else {
-    assert(lower >= fld.lower && upper < fld.upper);
+    assert(lower >= fldlower && upper < fldupper);
     *skip = 0;
     *nwrite = upper - lower;
   }
@@ -495,7 +507,8 @@ exec(const char* fn, const void* buf, size_t n)
   for(size_t i=0; i < hdr.nfields; ++i) {
     if(!hdr.flds[i].out3d) { continue; } /* only requested field. */
     size_t skip, nbytes;
-    if(byteintersect(offset, offset+n, hdr.flds[i], &skip, &nbytes)) {
+    if(byteintersect(offset, offset+n, hdr.flds[i].lower, hdr.flds[i].upper,
+                     &skip, &nbytes)) {
       assert(nbytes <= n);
       assert(skip < n);
       const char* pwrt = ((const char*)buf) + skip;
@@ -534,7 +547,8 @@ finish(const char* fn)
         };
         size_t bpos[3];
         to3d(rank(), hdr.nbricks, bpos);
-        TRACE(netz, "layout(%zu): %zu %zu %zu", rank(), bpos[0], bpos[1], bpos[2]);
+        TRACE(netz, "layout(%zu): %zu %zu %zu", rank(),
+              bpos[0], bpos[1], bpos[2]);
         struct writelist wl = find_destination(bpos, voxels, hdr.dims);
         char fname[256];
         snprintf(fname, 256, "%s.%zu", hdr.flds[i].name, rank());
