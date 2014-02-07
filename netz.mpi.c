@@ -52,12 +52,16 @@ static struct header hdr = {0};
 void
 wait_for_debugger()
 {
-  if(rank() == 0) {
-    volatile int x = 0;
-    printf("[%ld] Waiting for debugger...\n", (long)getpid());
-    while(x == 0) { ; }
+  static int entered = 0;
+  if(!entered) {
+    if(rank() == 0) {
+      volatile int i = 0;
+      printf("[%ld] Waiting for debugger...\n", (long)getpid());
+      while(i == 0) { ; }
+    }
+    MPI_Barrier(MPI_COMM_WORLD);
+    entered = 1;
   }
-  MPI_Barrier(MPI_COMM_WORLD);
 }
 
 static void
