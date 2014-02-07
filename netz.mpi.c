@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <fnmatch.h>
 #include <dlfcn.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -42,11 +43,13 @@ struct header {
  * is only writing to its header file.  The array will be non-null if we're in
  * the middle of some output files. */
 static FILE** binfield = NULL;
+/* ditto, except for when we're writing slices. oh, and we need descriptors. */
+static int* slicefield = NULL;
 /* Where we are in whatever output file we are at now.  Only tracked for the
  * restart files.  We use this to figure out if the current write is within any
  * of the fields the user has decided they want to see. */
 static size_t offset = 0; /* current offset in output file. */
-/* Header info is parsed when we see the first write to a restart file. */
+/* Header info is parsed when we close the 'header.txt' file.  See 'finish'. */
 static struct header hdr = {0};
 
 void
@@ -186,7 +189,9 @@ tjfstart()
 
   /* after reading the config, we should know how many fields we have. */
   assert(binfield == NULL);
+  assert(slicefield == NULL);
   binfield = calloc(hdr.nfields, sizeof(FILE*));
+  slicefield = calloc(hdr.nfields, sizeof(int));
   for(size_t i=0; i < hdr.nfields; ++i) {
     if(hdr.flds[i].out3d) {
       char fname[256];
@@ -197,8 +202,25 @@ tjfstart()
         return;
       }
     }
+    slicefield[i] = -1; /* default to -1, i.e. 'no file open' */
+    if(hdr.flds[i].slice) {
+      char fname[256];
+      snprintf(fname, 256, "%s.slice%zu", hdr.flds[i].name,
+               hdr.flds[i].slice-1);
+      slicefield[i] = open(fname, O_WRONLY | O_TRUNC | O_CLOEXEC | O_CREAT,
+                           S_IWUSR | S_IRUSR | S_IRGRP);
+      if(-1 == slicefield[i]) {
+        ERR(netz, "could not create '%s'", fname);
+        abort();
+        return;
+      }
+    }
   }
+  /* do we need a barrier to make sure that e.g. process 0 doesn't finish this
+   * function, move on, start writing, and *then* process 1 comes along and
+   * O_TRUNC's one of our slicefields? */
   assert(binfield);
+  assert(slicefield);
 }
 
 /* strips a string.  returns the stripped string, but also modifies it. */
@@ -217,6 +239,7 @@ strip(char** s)
 static void
 remove_underscores(char* str)
 {
+  assert(str);
   for(char* s=str; *s; ++s) {
     if(*s == '_') { *s = '\0'; break; }
   }
@@ -224,8 +247,8 @@ remove_underscores(char* str)
 
 struct writelist {
   size_t n;
-  struct aiocb** list;
-  size_t* srcoffset;
+  struct aiocb** list; /* will be allocated as an n-element array. */
+  size_t* srcoffset; /* will be allocated as an n-element array */
 };
 /* Writes are given to us as a byte range: 0 to 40000, for example.  Yet we are
  * MPI-parallel, and each process has a piece of the final file.  The local
@@ -233,7 +256,8 @@ struct writelist {
  * the final file.
  * This function takes the byte range, the size of the full domain, and the
  * size of local chunks, and calculates the offsets that they should appear in
- * a unified file.
+ * a unified file.  It assumes that the source data is a single contiguous
+ * stream.
  * NOTE that this cannot completely fill in the aiocb!  In particular,
  * it does not have access to the buffer to read from, nor the file
  * descriptor to write to.  Callers will need to fill this information in
@@ -270,6 +294,49 @@ find_destination(const size_t pos[3], /* brick position of this processor */
   }
   return rv;
 }
+PURE static size_t minzu(size_t a, size_t b) { return a < b ? a : b; }
+
+static struct writelist
+wlist2d(const size_t vox[3], /* n voxels for whole domain */
+        const size_t offset_bytes, /* bytes already written from this slice */
+        const void* a, /* buffer to write. */
+        const size_t n, /* number of *bytes* in 'a' */
+        const size_t layout[3], /* local rank's layout: which brick they are */
+        const size_t bs0) /* width (num elems) in a brick's scanline */
+{
+  const size_t c = sizeof(float); /* bytes per component. */
+  const size_t offset_elem = offset_bytes / c;
+  /* 'start offset': accounts for 'a' not starting at a brick boundary */
+  const size_t s = offset_elem % bs0;
+  const void* b = ((const char*)a) + n; /* end of 'a' buffer. */
+  const size_t nelems = (b - a) / c;
+  const size_t nwrites = (size_t) ceil((float)nelems / (float)bs0);
+  const size_t sline = offset_elem / bs0;
+
+  struct writelist writes;
+  writes.n = nwrites;
+  writes.list = calloc(nwrites, sizeof(struct aiocb*));
+  /* we don't use srcoffset, since we have the buffer.  just set it to 0s. */
+  writes.srcoffset = calloc(nwrites, sizeof(size_t));
+  writes.list[0] = calloc(1, sizeof(struct aiocb));
+  TRACE(netz, "sline(%zu), vox0(%zu), bs0(%zu), layout0(%zu), s(%zu)", sline,
+        vox[0], bs0, layout[0], s);
+  writes.list[0]->aio_offset = (sline*vox[0]+bs0*layout[0]+s) * c;
+  writes.list[0]->aio_buf = (void*)a;
+  writes.list[0]->aio_nbytes = (bs0 - s) * c;
+  writes.list[0]->aio_sigevent.sigev_notify = SIGEV_NONE;
+  writes.list[0]->aio_lio_opcode = LIO_WRITE;
+
+  for(size_t i=1; i < nwrites; ++i) {
+    writes.list[i] = calloc(1, sizeof(struct aiocb));
+    writes.list[i]->aio_offset = c * (((sline+i) * vox[0]) + layout[0]*bs0);
+    writes.list[i]->aio_buf = (void*)((const char*)a +
+                                      c * ((bs0-s) + ((i-1)*bs0)));
+    writes.list[i]->aio_nbytes = minzu(bs0*c, b - writes.list[i]->aio_buf);
+  }
+  return writes;
+}
+
 static void
 free_writelist(struct writelist wr)
 {
@@ -323,6 +390,8 @@ apply_writelist(struct writelist wl, const size_t bsize[3],
     close(fd);
     return;
   }
+  /* do we need a barrier here?  is it possible for process 0 to get to this
+   * unlink before process 1 finishes the open? */
   if(unlink(from) != 0) {
     WARN(netz, "could not remove brick '%s': %d", from, errno);
   }
@@ -469,6 +538,22 @@ byteintersect(const size_t lower, const size_t upper,
   return true;
 }
 
+static bool
+byteintersect2d(const size_t lower, const size_t upper,
+                const size_t fldlower, const size_t fldupper,
+                const size_t dims[3], size_t slice,
+                size_t* skip, size_t* nwrite)
+{
+  (void)fldupper;
+  /* This differs from the case above because our field is actually a subset of
+   * the field, since we only care about a slice.  We use the same
+   * calculation, but a modified field lower and upper byte range to account
+   * for the subset we want to pull out. */
+  const size_t flower = fldlower + slice*dims[1]*dims[0]*sizeof(float);
+  const size_t fupper = flower + dims[1]*dims[0]*sizeof(float);
+  return byteintersect(lower,upper, flower,fupper, skip,nwrite);
+}
+
 static void
 to3d(const size_t proc, const size_t layout[3], size_t out[3])
 {
@@ -504,6 +589,50 @@ create_nhdr(const char* rawfn, const size_t voxels[3])
   }
 }
 
+/* When we get a 2D write, if that write crosses a scanline boundary, the
+ * output needs to go to multiple places in the output file.  This takes a
+ * write, figures out where it goes, and writes it out. */
+static void
+writes2d(size_t offset, const void* buf, size_t nbytes, int to,
+         const struct header h)
+{
+  assert(to >= 0); /* can a descriptor be 0?  probably not, but... */
+  TRACE(netz, "2d decomposition of %zu bytes.", nbytes);
+  const size_t voxels[3] = { /* total # of voxels for whole output file */
+    h.nbricks[0] * h.dims[0],
+    h.nbricks[1] * h.dims[1],
+    1 /* this is only for 2D writes! */
+  };
+  /* we have the same number of bricks in each dimension as in 3D... except
+   * that there's only 1 brick in Z. */
+  const size_t nbricks[3] = { h.nbricks[0], h.nbricks[1], 1 };
+  size_t bpos[3];
+  to3d(rank(), nbricks, bpos);
+  TRACE(netz, "2dlayout(%zu): %zu %zu %zu", rank(), bpos[0],bpos[1],bpos[2]);
+
+  struct writelist wl = wlist2d(voxels, offset, buf, nbytes, bpos, h.dims[0]);
+  TRACE(netz, "writelist with %zu elements, merging into %d", wl.n, to);
+  for(size_t i=0; i < wl.n; ++i) {
+    wl.list[i]->aio_fildes = to;
+    TRACE(netz, "%zu wl[%zu]: { %zu, %zu, %zu } -> %d", rank(), i,
+          wl.list[i]->aio_offset, wl.list[i]->aio_buf-buf,
+          wl.list[i]->aio_nbytes, wl.list[i]->aio_fildes);
+    wl.list[i]->aio_sigevent.sigev_notify = SIGEV_NONE;
+    wl.list[i]->aio_lio_opcode = LIO_WRITE;
+  }
+  errno = 0;
+  if(lio_listio(LIO_WAIT, wl.list, wl.n, NULL) == -1) {
+    WARN(netz, "listio failed: %d", errno);
+      for(size_t i=0; i < wl.n; ++i) {
+      const ssize_t bytes = aio_return(wl.list[i]);
+      if(bytes <= 0) {
+        ERR(netz, "write %zu failed: %d, %d", i, (int)bytes, errno);
+      }
+    }
+  }
+  free_writelist(wl);
+}
+
 void
 exec(const char* fn, const void* buf, size_t n)
 {
@@ -516,9 +645,9 @@ exec(const char* fn, const void* buf, size_t n)
   }
   assert(binfield != NULL);
   for(size_t i=0; i < hdr.nfields; ++i) {
-    if(!hdr.flds[i].out3d) { continue; } /* only requested field. */
     size_t skip, nbytes;
-    if(byteintersect(offset, offset+n, hdr.flds[i].lower, hdr.flds[i].upper,
+    if(hdr.flds[i].out3d &&
+       byteintersect(offset, offset+n, hdr.flds[i].lower, hdr.flds[i].upper,
                      &skip, &nbytes)) {
       assert(nbytes <= n);
       assert(skip < n);
@@ -529,50 +658,86 @@ exec(const char* fn, const void* buf, size_t n)
         WARN(netz, "short write (%zu of %zu). errno=%d", written, n, errno);
         assert(0);
       }
+      assert(!ferror(binfield[i]));
     }
-    assert(!ferror(binfield[i]));
+    if(hdr.flds[i].slice &&
+       byteintersect2d(offset,offset+n, hdr.flds[i].lower,hdr.flds[i].upper,
+                       hdr.dims, hdr.flds[i].slice-1, &skip,&nbytes)) {
+      assert(nbytes <= n);
+      assert(skip < n);
+      assert(slicefield[i]);
+      const char* pwrt = ((const char*)buf) + skip;
+      /* we don't want the raw file offset.  rather we want the offset in the
+       * stream the user asked for.  that is the current offset sans the offset
+       * of the current field, sans the offset of the slice. */
+      const size_t slc_offset = (hdr.flds[i].slice-1)*hdr.dims[1]*hdr.dims[0] *
+                                sizeof(float);
+      const size_t strm_offset = offset+skip - hdr.flds[i].lower - slc_offset;
+      writes2d(strm_offset, pwrt, nbytes, slicefield[i], hdr);
+    }
   }
   offset += n;
+}
+
+/* 3D output works a little odd.  We have each rank write its own raw file,
+ * then we reassemble it later.  This function is the 'reassemble it later'
+ * part. */
+static void
+out3d()
+{
+  for(size_t i=0; i < hdr.nfields; ++i) {
+    if(binfield[i]) {
+      if(fclose(binfield[i]) != 0) {
+        ERR(netz, "error closing field %s: %d", hdr.flds[i].name, errno);
+      }
+      /* now each of our N processes has written a file which contains a
+       * single brick. let's merge all those bricks into a single file. */
+      const size_t voxels[3] = { /* total for the whole domain */
+        hdr.nbricks[0] * hdr.dims[0],
+        hdr.nbricks[1] * hdr.dims[1],
+        hdr.nbricks[2] * hdr.dims[2],
+      };
+      size_t bpos[3];
+      to3d(rank(), hdr.nbricks, bpos);
+      TRACE(netz, "layout(%zu): %zu %zu %zu", rank(),
+            bpos[0], bpos[1], bpos[2]);
+      struct writelist wl = find_destination(bpos, voxels, hdr.dims);
+      char fname[256];
+      snprintf(fname, 256, "%s.%zu", hdr.flds[i].name, rank());
+      TRACE(netz, "got writelist with %zu elements. merging %s into %s",
+            wl.n, fname, hdr.flds[i].name);
+      apply_writelist(wl, hdr.dims, hdr.flds[i].name, fname);
+      free_writelist(wl);
+      if(rank() == 0) {
+        create_nhdr(hdr.flds[i].name, voxels);
+      }
+    }
+  }
 }
 
 void
 finish(const char* fn)
 {
+  offset = 0; /* reset our current offset. */
   if(fnmatch("*header*", fn, 0) == 0) {
     free_header(&hdr);
     hdr = read_header(fn);
     return;
   }
   if(binfield) {
+    out3d();
+    free(binfield);
+    binfield = NULL;
+  }
+  if(slicefield) {
     for(size_t i=0; i < hdr.nfields; ++i) {
-      if(binfield[i]) {
-        if(fclose(binfield[i]) != 0) {
-          ERR(netz, "error closing field %s: %d", hdr.flds[i].name, errno);
-        }
-        /* now each of our N processes has written a file which contains a
-         * single brick. let's merge all those bricks into a single file. */
-        const size_t voxels[3] = { /* total for the whole domain */
-          hdr.nbricks[0] * hdr.dims[0],
-          hdr.nbricks[1] * hdr.dims[1],
-          hdr.nbricks[2] * hdr.dims[2],
-        };
-        size_t bpos[3];
-        to3d(rank(), hdr.nbricks, bpos);
-        TRACE(netz, "layout(%zu): %zu %zu %zu", rank(),
-              bpos[0], bpos[1], bpos[2]);
-        struct writelist wl = find_destination(bpos, voxels, hdr.dims);
-        char fname[256];
-        snprintf(fname, 256, "%s.%zu", hdr.flds[i].name, rank());
-        TRACE(netz, "got writelist with %zu elements. merging %s into %s",
-              wl.n, fname, hdr.flds[i].name);
-        apply_writelist(wl, hdr.dims, hdr.flds[i].name, fname);
-        free_writelist(wl);
-        if(rank() == 0) {
-          create_nhdr(hdr.flds[i].name, voxels);
+      if(slicefield[i] != -1) {
+        if(close(slicefield[i]) != 0) {
+          ERR(netz, "error writing slicefield %zu: %d", i, errno);
         }
       }
     }
-    free(binfield);
-    binfield = NULL;
+    free(slicefield);
+    slicefield = NULL;
   }
 }
