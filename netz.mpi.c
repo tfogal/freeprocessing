@@ -319,6 +319,7 @@ apply_writelist(struct writelist wl, const size_t bsize[3],
   if(lio_listio(LIO_WAIT, wl.list, wl.n, NULL) == -1) {
     WARN(netz, "listio failed: %d", errno);
   }
+  free(data);
   close(fd);
 }
 
