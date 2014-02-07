@@ -25,7 +25,7 @@ struct field {
   char* name;
   size_t lower; /* offset of this field in bytestream */
   size_t upper; /* final byte in stream +1 for this field */
-  bool process;  /* should we output this field? */
+  bool out3d; /* should we output a unified 3D volume of this field? */
 };
 struct header {
   size_t nghost; /* number of ghost cells, per-dim */
@@ -78,7 +78,7 @@ broadcast_header(struct header* hdr)
     broadcasts(hdr->flds[i].name, len);
     broadcastzu(&hdr->flds[i].lower, 1);
     broadcastzu(&hdr->flds[i].upper, 1);
-    broadcastb(&hdr->flds[i].process, 1);
+    broadcastb(&hdr->flds[i].out3d, 1);
   }
   broadcastzu(hdr->nbricks, 3);
 }
@@ -87,7 +87,7 @@ static void
 print_header(const struct header hdr)
 {
   printf("%zu ghost cells per dim\n", hdr.nghost);
-  printf("brick size: %zu x %zu x %zu\n", hdr.dims[0], hdr.dims[1], hdr.dims[2]);
+  printf("brick size: %zux%zux%zu\n", hdr.dims[0], hdr.dims[1], hdr.dims[2]);
   printf("%zu x %zu x %zu bricks\n", hdr.nbricks[0], hdr.nbricks[1],
          hdr.nbricks[2]);
   printf("%zu fields:\n", hdr.nfields);
@@ -104,21 +104,24 @@ read_field_config(FILE* fp, struct header* h)
   assert(h);
 
   char* fld = NULL;
-  const int m = fscanf(fp, "%ms { }", &fld);
+  char* cfg = NULL;
+  const int m = fscanf(fp, "%ms { %ms }", &fld, &cfg);
   if(feof(fp)) {
-    TRACE(netz, "scanning config: EOF");
+    TRACE(netz, "EOF scanning config, we must be done.");
     free(fld);
+    free(cfg);
     return false;
   }
-  if(m != 1) {
+  if(m != 2) {
     WARN(netz, "could not match field...");
     free(fld);
+    free(cfg);
     return false;
   }
   for(size_t i=0; i < h->nfields; ++i) {
     if(strcasecmp(h->flds[i].name, fld) == 0) {
-      TRACE(netz, "will process '%s'", h->flds[i].name);
-      h->flds[i].process = 1;
+      TRACE(netz, "will create 3D vol of '%s'", h->flds[i].name);
+      h->flds[i].out3d = 1;
     }
   }
   free(fld);
@@ -137,7 +140,7 @@ read_config(const char* from, struct header* h)
     return;
   }
   for(size_t i=0; i < h->nfields; ++i) { /* clear field configs. */
-    h->flds[i].process = 0;
+    h->flds[i].out3d = 0;
   }
   while(read_field_config(cfg, h)) { ; }
   fclose(cfg);
@@ -159,7 +162,7 @@ tjfstart()
   assert(binfield == NULL);
   binfield = calloc(hdr.nfields, sizeof(FILE*));
   for(size_t i=0; i < hdr.nfields; ++i) {
-    if(hdr.flds[i].process) {
+    if(hdr.flds[i].out3d) {
       char fname[256];
       snprintf(fname, 256, "%s.%zu", hdr.flds[i].name, rank());
       binfield[i] = fopen(fname, "wb");
@@ -379,7 +382,7 @@ read_header(const char *filename)
         const size_t fldsize = rv.dims[0]*rv.dims[1]*rv.dims[2]*sizeof(float);
         rv.flds[field].lower = fldsize * field;
         rv.flds[field].upper = rv.flds[field].lower + fldsize;
-        rv.flds[field].process = false;
+        rv.flds[field].out3d = false;
         field++;
       }
     }
@@ -489,7 +492,7 @@ exec(const char* fn, const void* buf, size_t n)
   }
   assert(binfield != NULL);
   for(size_t i=0; i < hdr.nfields; ++i) {
-    if(!hdr.flds[i].process) { continue; } /* only requested field. */
+    if(!hdr.flds[i].out3d) { continue; } /* only requested field. */
     size_t skip, nbytes;
     if(byteintersect(offset, offset+n, hdr.flds[i], &skip, &nbytes)) {
       assert(nbytes <= n);
