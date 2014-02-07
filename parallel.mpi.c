@@ -60,6 +60,8 @@ broadcastb(bool* b, size_t n)
   MPI_Bcast(b, n, MPI_BYTE, 0, MPI_COMM_WORLD);
 }
 
+void barrier() { MPI_Barrier(MPI_COMM_WORLD); }
+
 void
 allgatherf(float* f, int* rcvcount, int* displacements)
 {
