@@ -443,9 +443,10 @@ byteintersect(const size_t lower, const size_t upper,
   if(upper < fldlower || lower >= fldupper) {
     return false;
   }
-  /* there is an intersection.  one of three cases: (1) the write goes beyond
+  /* there is an intersection.  one of 4 cases: (1) the write goes beyond
    * the field; (2) the write starts before the field; (3) the write is
-   * completely contained within the field */
+   * completely contained within the field; (4) the write is larger than the
+   * field */
   *skip = 0;
   *nwrite = 0;
   if(lower > fldlower && upper > fldupper) {
@@ -454,10 +455,16 @@ byteintersect(const size_t lower, const size_t upper,
   } else if(lower < fldlower && upper < fldupper) {
     *skip = fldlower - lower;
     *nwrite = upper - fldlower;
-  } else {
-    assert(lower >= fldlower && upper < fldupper);
+  } else if(lower >= fldlower && upper < fldupper) {
     *skip = 0;
     *nwrite = upper - lower;
+  } else { /* (4) write is greater than field! */
+    assert(lower <= fldlower);
+    assert(upper >= fldupper);
+    assert(lower < fldupper);
+    assert(upper > fldlower);
+    *skip = fldlower - lower;
+    *nwrite = fldupper - fldlower; /* the whole field. */
   }
   return true;
 }
