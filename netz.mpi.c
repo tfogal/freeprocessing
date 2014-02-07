@@ -608,15 +608,11 @@ writes2d(size_t offset, const void* buf, size_t nbytes, int to,
   const size_t nbricks[3] = { h.nbricks[0], h.nbricks[1], 1 };
   size_t bpos[3];
   to3d(rank(), nbricks, bpos);
-  TRACE(netz, "2dlayout(%zu): %zu %zu %zu", rank(), bpos[0],bpos[1],bpos[2]);
 
   struct writelist wl = wlist2d(voxels, offset, buf, nbytes, bpos, h.dims[0]);
   TRACE(netz, "writelist with %zu elements, merging into %d", wl.n, to);
   for(size_t i=0; i < wl.n; ++i) {
     wl.list[i]->aio_fildes = to;
-    TRACE(netz, "%zu wl[%zu]: { %zu, %zu, %zu } -> %d", rank(), i,
-          wl.list[i]->aio_offset, wl.list[i]->aio_buf-buf,
-          wl.list[i]->aio_nbytes, wl.list[i]->aio_fildes);
     wl.list[i]->aio_sigevent.sigev_notify = SIGEV_NONE;
     wl.list[i]->aio_lio_opcode = LIO_WRITE;
   }
