@@ -12,10 +12,10 @@
 #include <unistd.h>
 #include "vis.h"
 #include "debug.h"
+#include "fproc.h"
 
 DECLARE_CHANNEL(generic);
 DECLARE_CHANNEL(opens);
-DECLARE_CHANNEL(freeproc);
 DECLARE_CHANNEL(writes);
 DECLARE_CHANNEL(hdf5);
 
@@ -141,91 +141,12 @@ fp_of(const struct openfile* f, const void* fp)
   return f->fp == fp;
 }
 
-typedef void (tfqn)(const char* fn, const void* buf, size_t n);
-typedef void (cfqn)(const char* fn);
-typedef void (szfqn)(const char* fn, const size_t d[3]);
-/* a library to load and exec as we move data, tee-style. */
-struct teelib {
-  char* pattern;
-  void* lib;
-  tfqn* transfer;
-  cfqn* finish;
-  szfqn* gridsize;
-};
-#define MAX_FREEPROCS 128U
 static struct teelib transferlibs[MAX_FREEPROCS] = {{NULL,NULL,NULL,NULL,NULL}};
 
 static bool
 patternmatch(const struct teelib* tl, const char* match)
 {
   return fnmatch(tl->pattern, match, 0) == 0;
-}
-
-static bool
-load_processor(FILE* from, struct teelib* lib)
-{
-  char* libname;
-  /* we're trying to parse something like this:
-   * '*stuff* { exec: libnetz.so }' */
-  int m = fscanf(from, "%ms { exec: %ms }", &lib->pattern, &libname);
-  if(m == -1 && feof(from)) { return false; }
-  if(m != 2) {
-    ERR(freeproc, "only matched %d, error loading processors (%d)", m, errno);
-    return false;
-  }
-  TRACE(freeproc, "processor '%s' { %s }", lib->pattern, libname);
-  dlerror();
-  lib->lib = dlopen(libname, RTLD_LAZY | RTLD_LOCAL | RTLD_DEEPBIND);
-  if(NULL == lib->lib) {
-    ERR(freeproc, "failed loading processor for %s ('%s')", lib->pattern,
-        libname);
-    return false;
-  }
-  dlerror();
-  lib->transfer = dlsym(lib->lib, "exec");
-  if(NULL == lib->transfer) {
-    ERR(freeproc, "failed loading 'exec' function from %s: %s", libname,
-        dlerror());
-    return false;
-  }
-  dlerror();
-  lib->finish = dlsym(lib->lib, "finish");
-  if(NULL == lib->finish) {
-    /* just a warning; this function isn't required. */
-    WARN(freeproc, "failed loading 'finish' function from %s: %s", libname,
-         dlerror());
-  }
-  dlerror();
-  lib->gridsize = dlsym(lib->lib, "grid_size");
-  if(NULL == lib->finish) {
-    /* just a warning; this function isn't required. */
-    WARN(freeproc, "failed loading 'grid_size' function from %s: %s", libname,
-         dlerror());
-  }
-  free(libname);
-  return true;
-}
-
-static void
-load_processors(struct teelib* tlibs, const char* cfgfile)
-{
-  FILE* fp = fopen(cfgfile, "r");
-  if(fp == NULL) { /* no config file; not much to do, then. */
-    WARN(opens, "config file '%s' not available, no vis to be done.", cfgfile);
-    return;
-  }
-  if(ferror(fp)) { ERR(freeproc, "ferr in '%s' cfg", cfgfile); }
-  if(feof(fp)) { ERR(freeproc, "eof in '%s' cfg", cfgfile); }
-
-  for(size_t i=0; !feof(fp) && i < MAX_FREEPROCS; ++i) {
-    if(!load_processor(fp, &tlibs[i]) && !feof(fp)) {
-      WARN(freeproc, "loading processor failed, ignoring it...");
-      break;
-    }
-    if(feof(fp)) { break; }
-  }
-
-  fclose(fp);
 }
 
 __attribute__((destructor)) static void
