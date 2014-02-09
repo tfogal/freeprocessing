@@ -9,6 +9,8 @@
 
 DECLARE_CHANNEL(freeproc);
 
+struct teelib transferlibs[MAX_FREEPROCS] = {{NULL,NULL,NULL,NULL,NULL}};
+
 static bool
 patternmatch(const struct teelib* tl, const char* match)
 {
@@ -87,9 +89,7 @@ load_processors(struct teelib* tlibs, const char* cfgfile)
       break;
     }
     if(feof(fp)) { break; }
-    TRACE(freeproc, "copying....");
     tlibs[i] = *tl;
-    TRACE(freeproc, "done!");
     free(tl);
   }
 

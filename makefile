@@ -13,7 +13,7 @@ obj=evfork.o forkenv.o override.o csv.o simplesitu.o vis.o parenv.mpi.o \
   runner.mpi.o setenv.mpi.o open.mpi.o binaryio.o debug.o \
   writebin.mpi.o netz.mpi.o parallel.mpi.o ctest.mpi.o modified.o \
   testmodified.o enzo.mpi.o echo.mpi.o nek5k.mpi.o png.o tonumpy.mpi.o \
-  fproc.o
+  fproc.o posix.o
 
 all: $(obj) libfp.so libsitu.so writecsv mpiwrapper envpar mpienv situ \
   mpifopen f95-write-array libecho.so libmpitee.so libnetz.so hacktest \
@@ -25,7 +25,7 @@ writecsv: csv.o
 libfp.so: override.o
 	$(CC) -ggdb -fPIC -shared $^ -o $@ $(LDFLAGS) $(LDLIBS)
 
-libsitu.so: debug.o fproc.o simplesitu.o vis.o
+libsitu.so: debug.o fproc.o posix.o simplesitu.o vis.o
 	$(CC) -ggdb -fPIC -shared $^ -o $@ $(LDFLAGS) $(LDLIBS)
 
 libecho.so: debug.o echo.mpi.o parallel.mpi.o

@@ -2,6 +2,7 @@
 #define FREEPROCESSING_FPROC_H
 
 #include <stdbool.h>
+#include <stdio.h>
 
 typedef void (tfqn)(const char* fn, const void* buf, size_t n);
 typedef void (cfqn)(const char* fn);
@@ -15,6 +16,7 @@ struct teelib {
   szfqn* gridsize;
 };
 #define MAX_FREEPROCS 128U
+extern struct teelib transferlibs[MAX_FREEPROCS];
 
 /** @returns NULL when it failed to read a processor (e.g. on EOF, error) */
 struct teelib* load_processor(FILE* from);
