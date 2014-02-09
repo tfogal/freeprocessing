@@ -94,13 +94,13 @@ broadcast_header(struct header* hdr)
 static void
 print_header(const struct header hdr)
 {
-  printf("%zu ghost cells per dim\n", hdr.nghost);
-  printf("brick size: %zux%zux%zu\n", hdr.dims[0], hdr.dims[1], hdr.dims[2]);
-  printf("%zu x %zu x %zu bricks\n", hdr.nbricks[0], hdr.nbricks[1],
-         hdr.nbricks[2]);
-  printf("%zu fields:\n", hdr.nfields);
+  TRACE(netz, "%zu ghost cells per dim\n", hdr.nghost);
+  TRACE(netz, "brick size: %zux%zux%zu\n", hdr.dims[0],hdr.dims[1],hdr.dims[2]);
+  TRACE(netz, "%zu x %zu x %zu bricks\n", hdr.nbricks[0], hdr.nbricks[1],
+        hdr.nbricks[2]);
+  TRACE(netz, "%zu fields:\n", hdr.nfields);
   for(size_t i=0; i < hdr.nfields; ++i) {
-    printf("\t%-5s at offset %25zu\n", hdr.flds[i].name, hdr.flds[i].lower);
+    TRACE(netz, "\t%-5s at offset %25zu\n", hdr.flds[i].name,hdr.flds[i].lower);
   }
 }
 
