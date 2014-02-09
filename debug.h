@@ -15,6 +15,10 @@
 #include <stdbool.h>
 #include <stdlib.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 enum SymbiontChanClass {
   SymbiontErr=0,
   SymbiontWarn,
@@ -53,5 +57,9 @@ extern void symb_dbg(enum SymbiontChanClass, const struct symbdbgchannel*,
                      const char* func, const char* format, ...)
                      __attribute__((format(printf, 4, 5)));
 extern void symb_parse_options(struct symbdbgchannel*, const char* opt);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* FP_SYMBIONT_DEBUG_H */
