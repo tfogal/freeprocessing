@@ -50,7 +50,7 @@ static int* slicefield = NULL;
  * of the fields the user has decided they want to see. */
 static size_t offset = 0; /* current offset in output file. */
 /* Header info is parsed when we close the 'header.txt' file.  See 'finish'. */
-static struct header hdr = {0};
+static struct header hdr = {0, {0,0,0}, 0, NULL, {0,0,0}};
 
 void
 wait_for_debugger()
