@@ -143,25 +143,10 @@ fp_of(const struct openfile* f, const void* fp)
 
 static struct teelib transferlibs[MAX_FREEPROCS] = {{NULL,NULL,NULL,NULL,NULL}};
 
-static bool
-patternmatch(const struct teelib* tl, const char* match)
-{
-  return fnmatch(tl->pattern, match, 0) == 0;
-}
-
 __attribute__((destructor)) static void
 free_processors() /* ha, ha */
 {
-  for(size_t i=0 ; i < MAX_FREEPROCS; ++i) {
-    if(transferlibs[i].pattern != NULL) {
-      assert(transferlibs[i].lib); /* can't have pattern w/o lib. */
-      if(dlclose(transferlibs[i].lib) != 0) {
-        WARN(opens, "error closing '%s' library.", transferlibs[i].pattern);
-      }
-      free(transferlibs[i].pattern);
-      transferlibs[i].pattern = NULL;
-    }
-  }
+  unload_processors(transferlibs);
 }
 
 __attribute__((constructor(200))) static void
@@ -208,9 +193,8 @@ fopen(const char* name, const char* mode)
     /* in that case, skip it, we don't want to keep track of it. */
     return fopenf(name, mode);
   }
-  /* what about a temp file?  probably don't want to visualize those. */
-  if(strncmp(name, "/tmp", 4) == 0) {
-    TRACE(opens, "opening temp file (%s); ignoring.", name);
+  if(strncmp(name, "/tmp", 4) == 0 || !matches(transferlibs, name)) {
+    TRACE(opens, "%s ignored by policy.", name);
     return fopenf(name, mode);
   }
   TRACE(opens, "opening %s", name);
@@ -218,7 +202,7 @@ fopen(const char* name, const char* mode)
   /* need an empty entry in the table to store the return value. */
   struct openfile* of = of_find(files, fp_of, NULL);
   if(of == NULL) {
-    WARN(opens, "out of open files.  skipping '%s'", name);
+    WARN(opens, "internal table overflow.  skipping '%s'", name);
     return fopenf(name, mode);
   }
   assert(of->fp == NULL);
@@ -243,12 +227,7 @@ fwrite(const void* buf, size_t n, size_t nmemb, FILE* fp)
     TRACE(opens, "I don't know %p.  Ignoring for in-situ.", fp);
     return fwritef(buf, n, nmemb, fp);
   }
-  for(size_t i=0; i < MAX_FREEPROCS && transferlibs[i].pattern; ++i) {
-    const struct teelib* tl = &transferlibs[i];
-    if(patternmatch(tl, of->name)) {
-      tl->transfer(of->name, buf, n*nmemb);
-    }
-  }
+  stream(transferlibs, of->name, buf, n*nmemb);
   TRACE(writes, "writing %zu*%zu bytes to %s", n,nmemb, of->name);
   return fwritef(buf, n, nmemb, fp);
 }
@@ -284,13 +263,7 @@ open(const char* fn, int flags, ...)
     mode = va_arg(lst, mode_t);
     va_end(lst);
   }
-  bool matches = false;
-  for(size_t i=0; i < MAX_FREEPROCS && transferlibs[i].pattern; ++i) {
-    if(patternmatch(&transferlibs[i], fn)) {
-      matches = true;
-    }
-  }
-  if((!(flags & O_RDWR) && !(flags & O_WRONLY)) || !matches ||
+  if((!(flags & O_RDWR) && !(flags & O_WRONLY)) || !matches(transferlibs, fn) ||
      strncmp(fn, "/tmp", 4) == 0 ||
      strncmp(fn, "/dev", 4) == 0) {
     TRACE(opens, "%s opened, but ignored by policy.", fn);
@@ -325,13 +298,8 @@ write(int fd, const void *buf, size_t sz)
   if(of == NULL) {
     return writef(fd, buf, sz);
   }
-  for(size_t i=0; i < MAX_FREEPROCS && transferlibs[i].pattern; ++i) {
-    const struct teelib* tl = &transferlibs[i];
-    if(patternmatch(tl, of->name)) {
-      tl->transfer(of->name, buf, sz);
-    }
-  }
   TRACE(writes, "writing %zu bytes to %d", sz, fd);
+  stream(transferlibs, of->name, buf, sz);
   /* It will cause us a lot of problems if a write ends up being short, and the
    * application then resubmits the next part of the partial write.  So,
    * iterate and make sure we avoid any partial writes. */
@@ -364,12 +332,7 @@ close(int des)
     return closef(des);
   }
 
-  for(size_t i=0; i < MAX_FREEPROCS && transferlibs[i].pattern; ++i) {
-    const struct teelib* tl = &transferlibs[i];
-    if(patternmatch(tl, of->name)) {
-      tl->finish(of->name);
-    }
-  }
+  finish(transferlibs, of->name);
 
   { /* free up rid of table entry */
     free(of->name);
@@ -385,6 +348,7 @@ int MPI_File_open(MPI_Comm comm, char* filename, int amode,
   TRACE(opens, "mpi_file_open(%s, %d)", filename, amode);
   assert(mpi_file_openf != NULL);
   #define MPI_MODE_WRONLY 4 /* hack! */
+  WARN(opens, "write detection is based on OMPI-specific hack..");
   if((amode & MPI_MODE_WRONLY) == 0) {
     TRACE(opens, "simulation output would probably be write-only.  "
           "File %s was opened %d, and so we are ignoring it for in-situ.",
@@ -549,21 +513,6 @@ H5Dclose(hid_t id)
   return h5dclosef(id);
 }
 
-static void
-freeprocess(const char* ptrn, const void* buf, const size_t dims[3])
-{
-  for(size_t i=0; i < MAX_FREEPROCS && transferlibs[i].pattern; ++i) {
-    if(patternmatch(&transferlibs[i], ptrn)) {
-      if(transferlibs[i].gridsize) {
-        transferlibs[i].gridsize(ptrn, dims);
-      }
-      /* sizeof(double) is a hack here... we can pull this from HDF5 */
-      const size_t n = dims[0] * dims[1] * dims[2] * sizeof(double);
-      transferlibs[i].transfer(ptrn, buf, n);
-    }
-  }
-}
-
 herr_t
 H5Dwrite(hid_t dset, hid_t memtype, hid_t memspace, hid_t filespace,
          hid_t plist, const void* buf)
@@ -576,7 +525,11 @@ H5Dwrite(hid_t dset, hid_t memtype, hid_t memspace, hid_t filespace,
       TRACE(hdf5, "h-write %s [%zu %zu %zu] %p", metah5[i].name,
             spaces[sidx].dims[0], spaces[sidx].dims[1], spaces[sidx].dims[2],
             buf);
-      freeprocess(metah5[i].name, buf, spaces[sidx].dims);
+      gridsize(transferlibs, metah5[i].name, spaces[sidx].dims);
+      /* sizeof(double) is a hack; TODO pull it from HDF5. */
+      const size_t n = spaces[sidx].dims[0] * spaces[sidx].dims[1] *
+                       spaces[sidx].dims[2] * sizeof(double);
+      stream(transferlibs, metah5[i].name, buf, n);
       break;
     }
   }

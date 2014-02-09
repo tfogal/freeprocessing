@@ -1,11 +1,19 @@
+#include <assert.h>
 #include <dlfcn.h>
 #include <errno.h>
+#include <fnmatch.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include "debug.h"
 #include "fproc.h"
 
 DECLARE_CHANNEL(freeproc);
+
+static bool
+patternmatch(const struct teelib* tl, const char* match)
+{
+  return fnmatch(tl->pattern, match, 0) == 0;
+}
 
 struct teelib*
 load_processor(FILE* from)
@@ -86,4 +94,64 @@ load_processors(struct teelib* tlibs, const char* cfgfile)
   }
 
   fclose(fp);
+}
+
+void
+unload_processors(struct teelib* tlibs)
+{
+  for(size_t i=0; i < MAX_FREEPROCS; ++i) {
+    if(tlibs[i].pattern != NULL) {
+      assert(tlibs[i].lib); /* can't have pattern w/o lib. */
+      if(dlclose(tlibs[i].lib) != 0) {
+        WARN(freeproc, "error closing '%s' library.", tlibs[i].pattern);
+      }
+      free(tlibs[i].pattern);
+      tlibs[i].pattern = NULL;
+    }
+  }
+}
+
+bool
+matches(const struct teelib* tlibs, const char* ptrn)
+{
+  for(size_t i=0; i < MAX_FREEPROCS && tlibs[i].pattern; ++i) {
+    if(patternmatch(&tlibs[i], ptrn)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void
+stream(const struct teelib* tlibs, const char* ptrn, const void* buf,
+       const size_t n)
+{
+  for(size_t i=0; i < MAX_FREEPROCS && tlibs[i].pattern; ++i) {
+    if(patternmatch(&tlibs[i], ptrn)) {
+      tlibs[i].transfer(ptrn, buf, n);
+    }
+  }
+}
+
+void
+gridsize(const struct teelib* tlibs, const char* ptrn, const size_t dims[3])
+{
+  for(size_t i=0; i < MAX_FREEPROCS && tlibs[i].pattern; ++i) {
+    if(patternmatch(&tlibs[i], ptrn)) {
+      if(tlibs[i].gridsize) {
+        tlibs[i].gridsize(ptrn, dims);
+      }
+    }
+  }
+}
+
+void
+finish(const struct teelib* tlibs, const char* ptrn)
+{
+  for(size_t i=0; i < MAX_FREEPROCS && tlibs[i].pattern; ++i) {
+    const struct teelib* tl = &tlibs[i];
+    if(patternmatch(tl, ptrn)) {
+      tl->finish(ptrn);
+    }
+  }
 }
