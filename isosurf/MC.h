@@ -12,22 +12,22 @@
 
 /** @returns the number of vertices processed in this iteration. */
 CMARCH size_t
-marchlayeru16(const uint16_t* data, const size_t dims[3],
+marchlayeru16(const uint16_t* s0, const uint16_t* s1, const size_t dims[3],
               uint64_t layer, float isovalue,
               FILE* vertices, FILE* faces,
               const uint64_t nvertices);
 CMARCH size_t
-marchlayer16(const int16_t* data, const size_t dims[3],
+marchlayer16(const int16_t* s0, const int16_t* s1, const size_t dims[3],
              uint64_t layer, float isovalue,
              FILE* vertices, FILE* faces,
              const uint64_t nvertices);
 CMARCH size_t
-marchlayeru8(const uint8_t* data, const size_t dims[3],
+marchlayeru8(const uint8_t* s0, const uint8_t* s1, const size_t dims[3],
              uint64_t layer, float isovalue,
              FILE* vertices, FILE* faces,
              const uint64_t nvertices);
 CMARCH size_t
-marchlayer8(const int8_t* data, const size_t dims[3],
+marchlayer8(const int8_t* s0, const int8_t* s1, const size_t dims[3],
             uint64_t layer, float isovalue,
             FILE* vertices, FILE* faces,
             const uint64_t nvertices);

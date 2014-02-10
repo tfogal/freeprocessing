@@ -47,26 +47,27 @@ exec(const char* fn, const void* buf, size_t n)
   /* Our MC code currently works on a slice at time.  So we buffer up to a
    * slice, and then flush it out.  Note, however, that we read into the second
    * half of the buffer; the first half is for the previous slice. */
-  const size_t slicesz = dims[0]*dims[1];
-  if(filled+n < slicesz) {
+  const size_t sliceelems = dims[0]*dims[1];
+  if(filled+n < sliceelems) {
     /* filled is in bytes, but data is uint16_t. */
-    memcpy(data+slicesz+filled/sizeof(uint16_t), buf, n);
+    memcpy(data+sliceelems+filled/sizeof(uint16_t), buf, n);
     filled += n;
   } else {
     /* fill up the remaining bytes of the buffer. */
-    const size_t mn = minzu(n, (slicesz*sizeof(uint16_t))-filled);
+    const size_t mn = minzu(n, (sliceelems*sizeof(uint16_t))-filled);
     assert(mn > 0);
     TRACE(iso, "%zu more bytes will exceed bufsize of %zu; copying %zu bytes "
-          "and running.", n, slicesz*sizeof(uint16_t), mn);
-    memcpy(data+slicesz+filled/sizeof(uint16_t), buf, mn);
-    mc->run(mc, data, dims[0]*dims[1]); /* run MC */
+          "and running.", n, sliceelems*sizeof(uint16_t), mn);
+    memcpy(data+sliceelems+filled/sizeof(uint16_t), buf, mn);
+    const void* dptr[2] = { (void*)data, (void*)data+sliceelems };
+    mc->run(mc, dptr, dims[0]*dims[1]); /* run MC */
 
     /* now get set up for the next slice.  copy the 'second half' to the 'first
      * half', and reset the number of bytes we read to be 0.  but, first:
      * calculate if there are any bytes we missed, above.  If so, we'll have to
      * recurse. */
-    memcpy(data, data+slicesz, slicesz*sizeof(uint16_t));
-    const size_t skipped = minzu(n, (slicesz*sizeof(uint16_t))-filled);
+    memcpy(data, data+sliceelems, sliceelems*sizeof(uint16_t));
+    const size_t skipped = minzu(n, (sliceelems*sizeof(uint16_t))-filled);
     filled = 0;
     if(skipped) { exec(fn, buf+skipped, n-skipped); }
   }

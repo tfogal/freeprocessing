@@ -1,12 +1,11 @@
 #include <array>
 #include <cstring>
 #include <cinttypes>
+#include <cerrno>
 #include "../debug.h"
 #include "MC.h"
 #include "Vectors.h"
 typedef std::array<float,3> FLOATVECTOR3;
-
-DECLARE_CHANNEL(mccpp);
 
 #define EPSILON 0.000001f
 #define DATA_INDEX(I, J, K, IDIM, JDIM) ((I) + ((IDIM) * (J)) + ((IDIM * JDIM) * (K)))
@@ -15,15 +14,17 @@ DECLARE_CHANNEL(mccpp);
 
 #define PURE __attribute__((pure))
 
+DECLARE_CHANNEL(mcpp);
+
 template <class T=float> class LayerTempData {
 public:
-  const T* pTBotData;
-  const T* pTTopData;
+  const T* botvol;
+  const T* topvol;
   int* piEdges;  // tag indexing into vertex list
 
-  LayerTempData<T>(const INTVECTOR3& vVolSize, const T* pTVolume);
+  LayerTempData<T>(const INTVECTOR3& vVolSize,
+                   const T* bottom, const T* top);
   virtual ~LayerTempData();
-  void NextIteration();
 
 private:
   INTVECTOR3 m_vVolSize;
@@ -125,7 +126,7 @@ public:
     virtual ~MarchingCubes<T>(void);
 
     virtual void SetVolume(int iSizeX, int iSizeY, int iSizeZ,
-                           const T* pTVolume);
+                           const T* s0, const T* s1);
     virtual void Process(T TIsoValue);
     void ResetIsosurf();
     uint64_t slice_number;
@@ -133,18 +134,16 @@ public:
 protected:
     INTVECTOR3 m_vVolSize;
     INTVECTOR3 m_vOffset;
-    const T* m_pTVolume;
+    const T* slice[2]; /* 0 is bottom, 1 is top. */
     T m_TIsoValue;
 
-    virtual void MarchLayer(LayerTempData<T> *layer, int iLayer);
+    virtual void MarchLayer(LayerTempData<T> *layer);
     virtual int MakeVertex(int whichEdge, int i, int j, int k,
                            Isosurface* sliceIso);
-    virtual FLOATVECTOR3 InterpolateNormal(T fValueAtPos,
-                                           INTVECTOR3 vPosition) PURE;
 };
 /*
   these tables for computing the Marching Cubes algorithm
-  are from Paul Bourke, based on code by Cory Gene Bloyd.
+  are Paul Bourke, based on code by Cory Gene Bloyd.
 
   The indexing of vertices and edges in a cube are defined
   as:
@@ -479,7 +478,7 @@ template <class T> MarchingCubes<T>::MarchingCubes(void) :
   sliceIsosurface(NULL)
 {
   m_vVolSize    = INTVECTOR3(0,0,0);
-  m_pTVolume    = NULL;
+  slice[0] = slice[1] = NULL;
   m_Isosurface  = NULL;
   this->slice_number = 0;
   this->m_Isosurface = new Isosurface();
@@ -495,9 +494,10 @@ template <class T> MarchingCubes<T>::~MarchingCubes(void)
 
 template <class T> void
 MarchingCubes<T>::SetVolume(int iSizeX, int iSizeY, int iSizeZ,
-                            const T* pTVolume)
+                            const T* slice0, const T* slice1)
 {
-  m_pTVolume  = pTVolume;
+  this->slice[0] = slice0;
+  this->slice[1] = slice1;
   m_vVolSize  = INTVECTOR3(iSizeX, iSizeY, iSizeZ);
   m_TIsoValue = 0;
   if(NULL == this->sliceIsosurface) {
@@ -523,21 +523,11 @@ template <class T> void MarchingCubes<T>::Process(T TIsoValue)
   if (m_vVolSize.volume() == 0) return;
 
   // create a new layer - dataset
-  LayerTempData<T>* layerData = new LayerTempData<T>(m_vVolSize,m_pTVolume);
+  LayerTempData<T>* layerData =
+    new LayerTempData<T>(m_vVolSize, slice[0], slice[1]);
 
   // march the first layer
-  MarchLayer(layerData, 0);
-
-#if 0
-  /* tjf: we do this externally, now, by calling this for each new layer. */
-  // now do the remaining layers
-  for (int iZ = 1; iZ < m_vVolSize.z - 1; iZ++) {
-    // prepare the temp data to be used in the next layer
-    layerData->NextIteration();
-    // march the next layer
-    MarchLayer(layerData, iZ);
-  }
-#endif
+  MarchLayer(layerData);
 
   // delete the layer dataset
   delete layerData;
@@ -549,26 +539,28 @@ MarchingCubes<T>::ResetIsosurf()
   delete m_Isosurface; m_Isosurface = NULL;
 }
 
+#define iLayer 0
 template <class T> void
-MarchingCubes<T>::MarchLayer(LayerTempData<T>* layer, int iLayer) {
+MarchingCubes<T>::MarchLayer(LayerTempData<T>* layer) {
   int cellVerts[12];  // the 12 possible vertices in a cell
   std::fill(cellVerts, cellVerts+12, NO_EDGE);
-
   this->sliceIsosurface->reset();
 
   // march all cells in the layer
-  for(int i = 0; i < m_vVolSize.x-1; i++) {
-    for(int j = 0; j < m_vVolSize.y-1; j++) {
+  const size_t voxels[2] = { (size_t)m_vVolSize.x-1, (size_t)m_vVolSize.y-1 };
+  for(size_t j = 0; j < voxels[1]; j++) {
+    for(size_t i = 0; i < voxels[0]; i++) {
+
       // fetch data from the volume
       T fVolumeValues[8];
-      fVolumeValues[0] = (layer->pTBotData[(j+1)  * m_vVolSize.x + i]);
-      fVolumeValues[1] = (layer->pTBotData[(j+1)  * m_vVolSize.x + i+1]);
-      fVolumeValues[2] = (layer->pTBotData[j      * m_vVolSize.x + i+1]);
-      fVolumeValues[3] = (layer->pTBotData[j      * m_vVolSize.x + i]);
-      fVolumeValues[4] = (layer->pTTopData[(j+1)  * m_vVolSize.x + i]);
-      fVolumeValues[5] = (layer->pTTopData[(j+1)  * m_vVolSize.x + i+1]);
-      fVolumeValues[6] = (layer->pTTopData[j      * m_vVolSize.x + i+1]);
-      fVolumeValues[7] = (layer->pTTopData[j      * m_vVolSize.x + i]);
+      fVolumeValues[0] = (layer->botvol[(j+1)  * m_vVolSize.x + i]);
+      fVolumeValues[1] = (layer->botvol[(j+1)  * m_vVolSize.x + i+1]);
+      fVolumeValues[2] = (layer->botvol[j      * m_vVolSize.x + i+1]);
+      fVolumeValues[3] = (layer->botvol[j      * m_vVolSize.x + i]);
+      fVolumeValues[4] = (layer->topvol[(j+1)  * m_vVolSize.x + i]);
+      fVolumeValues[5] = (layer->topvol[(j+1)  * m_vVolSize.x + i+1]);
+      fVolumeValues[6] = (layer->topvol[j      * m_vVolSize.x + i+1]);
+      fVolumeValues[7] = (layer->topvol[j      * m_vVolSize.x + i]);
 
       // compute the index for the table lookup
       int cellIndex = 1*int(fVolumeValues[0] < m_TIsoValue)+
@@ -670,24 +662,24 @@ MarchingCubes<T>::MarchLayer(LayerTempData<T>* layer, int iLayer) {
       // put the cellVerts tags into this cell's layer->edges table
       for (size_t iEdge = 0; iEdge < 12; iEdge++) {
           if (cellVerts[iEdge] != NO_EDGE) {
-            layer->piEdges[EDGE_INDEX(iEdge, i, j, m_vVolSize.x-1)] = cellVerts[iEdge];
+            layer->piEdges[EDGE_INDEX(iEdge, i, j, voxels[0])] = cellVerts[iEdge];
           }
       }
 
       // now propagate the vertex/normal tags to the adjacent cells to
       // the right and behind in this layer.
       if (i < m_vVolSize.x - 2) { // we should propagate to the right
-        layer->piEdges[EDGE_INDEX( 3, i+1, j, m_vVolSize.x-1)] = cellVerts[1];
-        layer->piEdges[EDGE_INDEX( 7, i+1, j, m_vVolSize.x-1)] = cellVerts[5];
-        layer->piEdges[EDGE_INDEX( 8, i+1, j, m_vVolSize.x-1)] = cellVerts[9];
-        layer->piEdges[EDGE_INDEX(11, i+1, j, m_vVolSize.x-1)] = cellVerts[10];
+        layer->piEdges[EDGE_INDEX( 3, i+1, j, voxels[0])] = cellVerts[1];
+        layer->piEdges[EDGE_INDEX( 7, i+1, j, voxels[0])] = cellVerts[5];
+        layer->piEdges[EDGE_INDEX( 8, i+1, j, voxels[0])] = cellVerts[9];
+        layer->piEdges[EDGE_INDEX(11, i+1, j, voxels[0])] = cellVerts[10];
       }
 
       if (j < m_vVolSize.y - 2) { // we should propagate to the rear
-        layer->piEdges[EDGE_INDEX( 2, i, j+1, m_vVolSize.x-1)] = cellVerts[0];
-        layer->piEdges[EDGE_INDEX( 6, i, j+1, m_vVolSize.x-1)] = cellVerts[4];
-        layer->piEdges[EDGE_INDEX(11, i, j+1, m_vVolSize.x-1)] = cellVerts[8];
-        layer->piEdges[EDGE_INDEX(10, i, j+1, m_vVolSize.x-1)] = cellVerts[9];
+        layer->piEdges[EDGE_INDEX( 2, i, j+1, voxels[0])] = cellVerts[0];
+        layer->piEdges[EDGE_INDEX( 6, i, j+1, voxels[0])] = cellVerts[4];
+        layer->piEdges[EDGE_INDEX(11, i, j+1, voxels[0])] = cellVerts[8];
+        layer->piEdges[EDGE_INDEX(10, i, j+1, voxels[0])] = cellVerts[9];
       }
 
       // store the vertex indices in the triangle data structure
@@ -706,7 +698,6 @@ MarchingCubes<T>::MarchLayer(LayerTempData<T>* layer, int iLayer) {
     }
   }
 
-  TRACE(mccpp, "appending data..");
   // add this layer's triangles to the global list
   m_Isosurface->AppendData(sliceIsosurface);
 }
@@ -717,38 +708,103 @@ MarchingCubes<T>::MakeVertex(int iEdgeIndex, int i, int j, int k,
   INTVECTOR3 vFrom; // first grid vertex
   INTVECTOR3 vTo; // second grid vertex
 
+  T fFromValue, fToValue;
+  size_t fidx, toidx;
   // on the edge index decide what the edges are
+  // we can't use 'k' for the data index because we only have 2 slices, not the
+  // whole volume; but we still need the write 'k' to get the position correct.
+  // so we hack out all the z values to be 0.
   switch (iEdgeIndex) {
     case  0:
-      vFrom = INTVECTOR3(  i,j+1,  k);  vTo  = INTVECTOR3(i+1,j+1,  k); break;
+      vFrom = INTVECTOR3(  i,j+1,  k);  vTo  = INTVECTOR3(i+1,j+1,  k);
+      fidx = DATA_INDEX(vFrom.x, vFrom.y, 0, m_vVolSize.x, m_vVolSize.y);
+      toidx = DATA_INDEX(vTo.x, vTo.y, 0, m_vVolSize.x, m_vVolSize.y);
+      // slice[0] vs. slice[1] comes from k: 'k' gives slice[0], 'k+1' gives
+      // slice[1]
+      fFromValue = slice[0][fidx];
+      fToValue = slice[0][toidx];
+      break;
     case  1:
-      vFrom = INTVECTOR3(i+1,j+1,  k);  vTo  = INTVECTOR3(i+1,  j,  k); break;
+      vFrom = INTVECTOR3(i+1,j+1,  k);  vTo  = INTVECTOR3(i+1,  j,  k);
+      fidx = DATA_INDEX(vFrom.x, vFrom.y, 0, m_vVolSize.x, m_vVolSize.y);
+      toidx = DATA_INDEX(vTo.x, vTo.y, 0, m_vVolSize.x, m_vVolSize.y);
+      fFromValue = slice[0][fidx];
+      fToValue = slice[0][toidx];
+      break;
     case  2:
-      vFrom = INTVECTOR3(i+1,  j,  k);  vTo  = INTVECTOR3(  i,  j,  k); break;
+      vFrom = INTVECTOR3(i+1,  j,  k);  vTo  = INTVECTOR3(  i,  j,  k);
+      fidx = DATA_INDEX(vFrom.x, vFrom.y, 0, m_vVolSize.x, m_vVolSize.y);
+      toidx = DATA_INDEX(vTo.x, vTo.y, 0, m_vVolSize.x, m_vVolSize.y);
+      fFromValue = slice[0][fidx];
+      fToValue = slice[0][toidx];
+      break;
     case  3:
-      vFrom = INTVECTOR3(  i,  j,  k);  vTo  = INTVECTOR3(  i,j+1,  k); break;
+      vFrom = INTVECTOR3(  i,  j,  k);  vTo  = INTVECTOR3(  i,j+1,  k);
+      fidx = DATA_INDEX(vFrom.x, vFrom.y, 0, m_vVolSize.x, m_vVolSize.y);
+      toidx = DATA_INDEX(vTo.x, vTo.y, 0, m_vVolSize.x, m_vVolSize.y);
+      fFromValue = slice[0][fidx];
+      fToValue = slice[0][toidx];
+      break;
     case  4:
-      vFrom = INTVECTOR3(  i,j+1,k+1);  vTo  = INTVECTOR3(i+1,j+1,k+1); break;
+      vFrom = INTVECTOR3(  i,j+1,k+1);  vTo  = INTVECTOR3(i+1,j+1,k+1);
+      fidx = DATA_INDEX(vFrom.x, vFrom.y, 0, m_vVolSize.x, m_vVolSize.y);
+      toidx = DATA_INDEX(vTo.x, vTo.y, 0, m_vVolSize.x, m_vVolSize.y);
+      fFromValue = slice[1][fidx];
+      fToValue = slice[1][toidx];
+      break;
     case  5:
-      vFrom = INTVECTOR3(i+1,j+1,k+1);  vTo  = INTVECTOR3(i+1,  j,k+1); break;
+      vFrom = INTVECTOR3(i+1,j+1,k+1);  vTo  = INTVECTOR3(i+1,  j,k+1);
+      fidx = DATA_INDEX(vFrom.x, vFrom.y, 0, m_vVolSize.x, m_vVolSize.y);
+      toidx = DATA_INDEX(vTo.x, vTo.y, 0, m_vVolSize.x, m_vVolSize.y);
+      fFromValue = slice[1][fidx];
+      fToValue = slice[1][toidx];
+      break;
     case  6:
-      vFrom = INTVECTOR3(i+1,  j,k+1);  vTo  = INTVECTOR3(  i,  j,k+1); break;
+      vFrom = INTVECTOR3(i+1,  j,k+1);  vTo  = INTVECTOR3(  i,  j,k+1);
+      fidx = DATA_INDEX(vFrom.x, vFrom.y, 0, m_vVolSize.x, m_vVolSize.y);
+      toidx = DATA_INDEX(vTo.x, vTo.y, 0, m_vVolSize.x, m_vVolSize.y);
+      fFromValue = slice[1][fidx];
+      fToValue = slice[1][toidx];
+      break;
     case  7:
-      vFrom = INTVECTOR3(  i,  j,k+1);  vTo  = INTVECTOR3(  i,j+1,k+1); break;
+      vFrom = INTVECTOR3(  i,  j,k+1);  vTo  = INTVECTOR3(  i,j+1,k+1);
+      fidx = DATA_INDEX(vFrom.x, vFrom.y, 0, m_vVolSize.x, m_vVolSize.y);
+      toidx = DATA_INDEX(vTo.x, vTo.y, 0, m_vVolSize.x, m_vVolSize.y);
+      fFromValue = slice[1][fidx];
+      fToValue = slice[1][toidx];
+      break;
     case  8:
-      vFrom = INTVECTOR3(  i,j+1,  k);  vTo  = INTVECTOR3(  i,j+1,k+1); break;
+      vFrom = INTVECTOR3(  i,j+1,  k);  vTo  = INTVECTOR3(  i,j+1,k+1);
+      fidx = DATA_INDEX(vFrom.x, vFrom.y, 0, m_vVolSize.x, m_vVolSize.y);
+      toidx = DATA_INDEX(vTo.x, vTo.y, 0, m_vVolSize.x, m_vVolSize.y);
+      fFromValue = slice[0][fidx];
+      fToValue = slice[1][toidx];
+      break;
     case  9:
-      vFrom = INTVECTOR3(i+1,j+1,  k);  vTo  = INTVECTOR3(i+1,j+1,k+1); break;
+      vFrom = INTVECTOR3(i+1,j+1,  k);  vTo  = INTVECTOR3(i+1,j+1,k+1);
+      fidx = DATA_INDEX(vFrom.x, vFrom.y, 0, m_vVolSize.x, m_vVolSize.y);
+      toidx = DATA_INDEX(vTo.x, vTo.y, 0, m_vVolSize.x, m_vVolSize.y);
+      fFromValue = slice[0][fidx];
+      fToValue = slice[1][toidx];
+      break;
     case 10:
-      vFrom = INTVECTOR3(i+1,  j,  k);  vTo  = INTVECTOR3(i+1,  j,k+1); break;
+      vFrom = INTVECTOR3(i+1,  j,  k);  vTo  = INTVECTOR3(i+1,  j,k+1);
+      fidx = DATA_INDEX(vFrom.x, vFrom.y, 0, m_vVolSize.x, m_vVolSize.y);
+      toidx = DATA_INDEX(vTo.x, vTo.y, 0, m_vVolSize.x, m_vVolSize.y);
+      fFromValue = slice[0][fidx];
+      fToValue = slice[1][toidx];
+      break;
     case 11:
-      vFrom = INTVECTOR3(  i,  j,  k);  vTo  = INTVECTOR3(  i,  j,k+1); break;
+      vFrom = INTVECTOR3(  i,  j,  k);  vTo  = INTVECTOR3(  i,  j,k+1);
+      fidx = DATA_INDEX(vFrom.x, vFrom.y, 0, m_vVolSize.x, m_vVolSize.y);
+      toidx = DATA_INDEX(vTo.x, vTo.y, 0, m_vVolSize.x, m_vVolSize.y);
+      fFromValue = slice[0][fidx];
+      fToValue = slice[1][toidx];
+      break;
+    default:
+      assert(false);
+      fFromValue = fToValue = T(0);
   }
-
-  T fFromValue = m_pTVolume[DATA_INDEX(vFrom.x, vFrom.y, vFrom.z, m_vVolSize.x,
-                                       m_vVolSize.y)];
-  T fToValue   = m_pTVolume[DATA_INDEX(  vTo.x,   vTo.y,   vTo.z, m_vVolSize.x,
-                                       m_vVolSize.y)];
 
   // determine the relative distance along edge vFrom->vTo that the
   // isosurface vertex lies
@@ -767,98 +823,24 @@ MarchingCubes<T>::MakeVertex(int iEdgeIndex, int i, int j, int k,
   // slice we're on.
   vVertex[2] = vVertex[2] + this->slice_number;
 
-  // now determine the gradients at the endpoints of the edge
-  // and interpolate the normal for the isosurface vertex
-#if 0
-  // we don't end up outputting the normal anyway.
-  FLOATVECTOR3  vNormFrom = InterpolateNormal(fFromValue,vFrom);
-  FLOATVECTOR3  vNormTo   = InterpolateNormal(  fToValue,  vTo);
-
-  // interpolate the normal
-  FLOATVECTOR3  vNormal = FLOATVECTOR3(
-    float(vNormFrom.x) + d * float(vNormTo.x - vNormFrom.x),
-    float(vNormFrom.y) + d * float(vNormTo.y - vNormFrom.y),
-    float(vNormFrom.z) + d * float(vNormTo.z - vNormFrom.z)
-  );
-  vNormal.normalize(EPSILON);
-
-  // insert the vertex and normal into the isosurface structure and
-  // return the index for this vertex
-  return sliceIso->AddVertex(vVertex, vNormal);
-#else
+  // we skip the normal as a bit of a hack.
   return sliceIso->AddVertex(vVertex, FLOATVECTOR3());
-#endif
-}
-
-template <class T> FLOATVECTOR3
-MarchingCubes<T>::InterpolateNormal(T fValueAtPos, INTVECTOR3 vPosition)
-{
-  // the gradients are computed by central differences, except
-  // on the boundaries of the dataset, where forward or backward
-  // differencing is used (three point form)
-  DOUBLEVECTOR3 result;
-
-  // the x component
-  if (vPosition.x == 0) {              // left border -> forward diff
-    result.x = 0.5f * float(-3.0f * fValueAtPos +
-                 4.0f * m_pTVolume[DATA_INDEX(vPosition.x+1, vPosition.y, vPosition.z, m_vVolSize.x, m_vVolSize.y)] +
-                -1.0f * m_pTVolume[DATA_INDEX(vPosition.x+2, vPosition.y, vPosition.z, m_vVolSize.x, m_vVolSize.y)]);
-  } else if (vPosition.x == m_vVolSize.x - 1) {  // right border -> forward diff
-    result.x = 0.5f * float(  3.0f * fValueAtPos+
-                 -4.0f * m_pTVolume[DATA_INDEX(vPosition.x-1, vPosition.y, vPosition.z, m_vVolSize.x, m_vVolSize.y)] +
-                1.0f * m_pTVolume[DATA_INDEX(vPosition.x-2, vPosition.y, vPosition.z, m_vVolSize.x, m_vVolSize.y)]);
-  } else {                  // interior -> central diff
-    result.x = 0.5f * float(  m_pTVolume[DATA_INDEX(vPosition.x+1, vPosition.y, vPosition.z, m_vVolSize.x, m_vVolSize.y)] -
-                m_pTVolume[DATA_INDEX(vPosition.x-1, vPosition.y, vPosition.z, m_vVolSize.x, m_vVolSize.y)]);
-  }
-
-  // the y component
-  if (vPosition.y == 0) {              //forward diff
-    result.y = 0.5f * (-3.0f * fValueAtPos +
-                 4.0f * m_pTVolume[DATA_INDEX(vPosition.x, vPosition.y+1, vPosition.z, m_vVolSize.x, m_vVolSize.y)] +
-                -1.0f * m_pTVolume[DATA_INDEX(vPosition.x, vPosition.y+2, vPosition.z, m_vVolSize.x, m_vVolSize.y)]);
-  } else if (vPosition.y == m_vVolSize.y - 1) {  // forward diff
-    result.y = 0.5f * (  3.0f * fValueAtPos+
-                 -4.0f * m_pTVolume[DATA_INDEX(vPosition.x, vPosition.y-1, vPosition.z, m_vVolSize.x, m_vVolSize.y)] +
-                1.0f * m_pTVolume[DATA_INDEX(vPosition.x, vPosition.y-2, vPosition.z, m_vVolSize.x, m_vVolSize.y)]);
-  } else {                  // central diff
-    result.y = 0.5f * (  m_pTVolume[DATA_INDEX(vPosition.x, vPosition.y+1, vPosition.z, m_vVolSize.x, m_vVolSize.y)] -
-                m_pTVolume[DATA_INDEX(vPosition.x, vPosition.y-1, vPosition.z, m_vVolSize.x, m_vVolSize.y)]);
-  }
-
-  // the z component
-  if (vPosition.z == 0) {              //forward diff
-    result.z = 0.5f * (-3.0f * fValueAtPos +
-                 4.0f * m_pTVolume[DATA_INDEX(vPosition.x, vPosition.y, vPosition.z+1, m_vVolSize.x, m_vVolSize.y)] +
-                -1.0f * m_pTVolume[DATA_INDEX(vPosition.x, vPosition.y, vPosition.z+2, m_vVolSize.x, m_vVolSize.y)]);
-  } else if (vPosition.z == m_vVolSize.z - 1) {  // forward diff
-    result.z = 0.5f * (  3.0f * fValueAtPos+
-                 -4.0f * m_pTVolume[DATA_INDEX(vPosition.x, vPosition.y, vPosition.z-1, m_vVolSize.x, m_vVolSize.y)] +
-                1.0f * m_pTVolume[DATA_INDEX(vPosition.x, vPosition.y, vPosition.z-2, m_vVolSize.x, m_vVolSize.y)]);
-  } else {                  // central diff
-    result.z = 0.5f * (  m_pTVolume[DATA_INDEX(vPosition.x, vPosition.y, vPosition.z+1, m_vVolSize.x, m_vVolSize.y)] -
-                m_pTVolume[DATA_INDEX(vPosition.x, vPosition.y, vPosition.z-1, m_vVolSize.x, m_vVolSize.y)]);
-  }
-
-  return {{
-    static_cast<float>(result.x),
-    static_cast<float>(result.y),
-    static_cast<float>(result.z)
-  }};
 }
 
 template <class T>
-LayerTempData<T>::LayerTempData(const VECTOR3<int>& vVolSize, const T* pTVolume)
+LayerTempData<T>::LayerTempData(const VECTOR3<int>& vVolSize,
+                                const T* bot, const T* top) :
+  botvol(bot),
+  topvol(top)
 {
   m_vVolSize = vVolSize;
 
-  pTBotData = pTVolume;
-  pTTopData = pTVolume+DATA_INDEX(0, 0, 1, vVolSize.x, vVolSize.y);
   // allocate storage to hold the indexing tags for edges in the layer
   piEdges = new int[(vVolSize.x-1) * (vVolSize.y-1) * 12];
 
   // init edge list
-  for (int i = 0; i < (vVolSize.x-1) * (vVolSize.y-1) * 12; i++) {
+  const size_t len = (vVolSize.x-1) * (vVolSize.y-1) * 12;
+  for(size_t i=0; i < len; ++i) {
     piEdges[i] = NO_EDGE;
   }
 }
@@ -867,92 +849,86 @@ template <class T> LayerTempData<T>::~LayerTempData() {
   delete[] piEdges;
 }
 
-template <class T> void LayerTempData<T>::NextIteration() {
-  // update the layer for this iteration
-  pTBotData = pTTopData;
-  // now topData points to next layer of scalar data
-  pTTopData += DATA_INDEX(0, 0, 1, m_vVolSize.x, m_vVolSize.y);
-  // percolate the last layer's top edges to this layer's bottom edges
-  for (int iY = 0; iY < m_vVolSize.y-1; iY++) {
-    for (int iX = 0; iX < m_vVolSize.x-1; iX++) {
-      for (int iEdges = 0; iEdges < 4; iEdges++) {
-        piEdges[EDGE_INDEX(iEdges, iX, iY, m_vVolSize.x-1)] =
-          piEdges[EDGE_INDEX(iEdges+4, iX, iY, m_vVolSize.x-1)];
-      }
-      // reinitialize all of the remaining edges
-      for (int iEdges = 4; iEdges < 12; iEdges++) {
-        piEdges[EDGE_INDEX(iEdges, iX, iY, m_vVolSize.x-1)] = NO_EDGE;
-      }
-    }
-  }
-}
-
 template<typename T> size_t
-marchlayer(const T* data, const size_t dims[3], uint64_t layer, float isovalue,
-           FILE* vertices, FILE* faces, const uint64_t nvertices)
+marchlayer(const T* s0, const T* s1, const size_t dims[3], uint64_t layer,
+           float isovalue, FILE* vertices, FILE* faces,
+           const uint64_t nvertices)
 {
   static MarchingCubes<T> mc;
-  assert(vertices);
-  assert(faces);
-  assert(data);
-  assert(dims[0]*dims[1]*dims[2] > 0);
 //  mc.ResetIsosurf();
   mc.slice_number = layer;
-  mc.SetVolume(dims[0], dims[1], dims[2], data);
-  TRACE(mccpp, "set volume.  running...");
+  mc.SetVolume(dims[0], dims[1], dims[2], s0, s1);
   mc.Process(isovalue);
-  TRACE(mccpp, "now extracting isodata");
   const Isosurface* iso = mc.m_Isosurface;
-  assert(iso);
   for(size_t vert=0; vert < iso->iVertices; ++vert) {
+#if 0
     fprintf(vertices, "v %f %f %f\n", iso->vfVertices[vert][0],
             iso->vfVertices[vert][1], iso->vfVertices[vert][2]);
+#else
+    const size_t nelem = fwrite(iso->vfVertices[vert].data(), sizeof(float), 3,
+                                vertices);
+    if(nelem != 3) {
+      ERR(mcpp, "vertex write failed (%zu): %d", nelem, errno);
+    }
+#endif
   }
   for(size_t tri=0; tri < iso->iTriangles; ++tri) {
     /* nvertices accounts for previous layers. +1: OBJ indices are 1-based. */
+#if 0
     fprintf(faces, "f %lu %lu %lu\n",
             nvertices + (iso->viTriangles[tri][0] + 1),
             nvertices + (iso->viTriangles[tri][1] + 1),
             nvertices + (iso->viTriangles[tri][2] + 1));
+#else
+    const std::array<long unsigned int,3> v = {
+            nvertices + (iso->viTriangles[tri][0] + 1),
+            nvertices + (iso->viTriangles[tri][1] + 1),
+            nvertices + (iso->viTriangles[tri][2] + 1)
+    };
+    const size_t nelem = fwrite(v.data(), sizeof(uint32_t), 3, faces);
+    if(nelem != 3) {
+      ERR(mcpp, "faces write failed (%zu): %d", nelem, errno);
+    }
+#endif
   }
   return iso->iVertices;
 }
 
 /** @returns the number of vertices processed in this iteration. */
 CMARCH size_t
-marchlayeru16(const uint16_t* data, const size_t dims[3],
+marchlayeru16(const uint16_t* s0, const uint16_t* s1, const size_t dims[3],
               uint64_t layer, float isovalue,
               FILE* vertices, FILE* faces,
               const uint64_t nvertices)
 {
-  return marchlayer<uint16_t>(data, dims, layer, isovalue, vertices, faces,
+  return marchlayer<uint16_t>(s0,s1, dims, layer, isovalue, vertices, faces,
                               nvertices);
 }
 CMARCH size_t
-marchlayer16(const int16_t* data, const size_t dims[3],
+marchlayer16(const int16_t* s0, const int16_t* s1, const size_t dims[3],
              uint64_t layer, float isovalue,
              FILE* vertices, FILE* faces,
              const uint64_t nvertices)
 {
-  return marchlayer<int16_t>(data, dims, layer, isovalue, vertices, faces,
+  return marchlayer<int16_t>(s0, s1, dims, layer, isovalue, vertices, faces,
                              nvertices);
 }
 CMARCH size_t
-marchlayeru8(const uint8_t* data, const size_t dims[3],
+marchlayeru8(const uint8_t* s0, const uint8_t* s1, const size_t dims[3],
              uint64_t layer, float isovalue,
              FILE* vertices, FILE* faces,
              const uint64_t nvertices)
 {
-  return marchlayer<uint8_t>(data, dims, layer, isovalue, vertices, faces,
+  return marchlayer<uint8_t>(s0, s1, dims, layer, isovalue, vertices, faces,
                              nvertices);
 }
 CMARCH size_t
-marchlayer8(const int8_t* data, const size_t dims[3],
+marchlayer8(const int8_t* s0, const int8_t* s1, const size_t dims[3],
             uint64_t layer, float isovalue,
             FILE* vertices, FILE* faces,
             const uint64_t nvertices)
 {
-  return marchlayer<int8_t>(data, dims, layer, isovalue, vertices, faces,
+  return marchlayer<int8_t>(s0, s1, dims, layer, isovalue, vertices, faces,
                             nvertices);
 }
 

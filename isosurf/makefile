@@ -1,8 +1,9 @@
 MPICC=mpicc
 WARN=-Wall -Wextra
-CFLAGS=-std=c99 -fPIC $(WARN) -ggdb
-CXXFLAGS=-std=c++11 -fPIC $(WARN) -ggdb
-LDFLAGS:=-Wl,--no-undefined
+OPT=-Ofast -fno-omit-frame-pointer -DNDEBUG -fopenmp
+CFLAGS=-std=c99 -fPIC $(WARN) -ggdb $(OPT)
+CXXFLAGS=-std=c++11 -fPIC $(WARN) -ggdb $(OPT)
+LDFLAGS:=-Wl,--no-undefined -fopenmp
 LDLIBS=
 obj=isosurf.o mcubes.o MC.o
 
