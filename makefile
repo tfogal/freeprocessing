@@ -25,7 +25,7 @@ writecsv: csv.o
 libfp.so: override.o
 	$(CC) -ggdb -fPIC -shared $^ -o $@ $(LDFLAGS) $(LDLIBS)
 
-libsitu.so: debug.o fproc.o posix.o simplesitu.o vis.o
+libsitu.so: debug.o fproc.o posix.o simplesitu.o
 	$(CC) -ggdb -fPIC -shared $^ -o $@ $(LDFLAGS) $(LDLIBS)
 
 libecho.so: debug.o echo.mpi.o parallel.mpi.o

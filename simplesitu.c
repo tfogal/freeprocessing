@@ -9,7 +9,6 @@
 #include <string.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include "vis.h"
 #include "debug.h"
 #include "fproc.h"
 
