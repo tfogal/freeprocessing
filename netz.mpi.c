@@ -495,9 +495,6 @@ cleanup()
   free_header(&hdr);
 }
 
-#define minzu(a, b) \
-  ({ const size_t x=a; const size_t y=b; x < y ? x : y; })
-
 /* which bytes intersect with the ones we want to write?
  * @param skip number of bytes to skip before we start writing
  * @param nwrite number of bytes to write, maxes out at 'len'.
