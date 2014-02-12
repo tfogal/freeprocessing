@@ -409,7 +409,7 @@ apply_writelist(struct writelist wl, const size_t bsize[3],
 static struct header
 read_header(const char *filename)
 {
-  struct header rv;
+  struct header rv = {0};
   TRACE(netz, "[%zu] reading header from %s", rank(), filename);
   FILE* fp = fopen(filename, "r");
   if(!fp) {
