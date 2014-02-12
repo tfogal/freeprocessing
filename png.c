@@ -118,6 +118,7 @@ bool readpng(const char* filename, uint8_t** buf,
     fprintf(stderr, "this function only handles grayscale images\n");
     png_destroy_read_struct(&png, &info, &endinfo);
     fclose(fp);
+    return false;
   }
 
   uint8_t bgcolor=0;
