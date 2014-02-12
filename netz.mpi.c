@@ -566,6 +566,7 @@ create_nhdr(const char* rawfn, const size_t voxels[3])
   strcpy(hname, rawfn);
   strcat(hname, ".nhdr");
   FILE* fp = fopen(hname, "w");
+  free(hname);
   if(!fp) {
     WARN(netz, "could not create header filename");
     return;
