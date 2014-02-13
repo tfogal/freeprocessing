@@ -37,44 +37,38 @@ load_processor(FILE* from)
   TRACE(freeproc, "processor '%s' { %s }", lib->pattern, libname);
   dlerror();
   lib->lib = dlopen(libname, RTLD_LAZY | RTLD_LOCAL | RTLD_DEEPBIND);
+  free(libname); libname = NULL;
   if(NULL == lib->lib) {
     ERR(freeproc, "failed loading processor for %s ('%s')", lib->pattern,
         libname);
     free(lib); lib = NULL;
-    free(libname); libname = NULL;
     return NULL;
   }
   dlerror();
   lib->transfer = dlsym(lib->lib, "exec");
   if(NULL == lib->transfer) {
-    ERR(freeproc, "failed loading 'exec' function from %s: %s", libname,
-        dlerror());
+    /* warn here: this is the main use of freeprocessing, so not having this
+     * function is a bit weird.  but, still valid; maybe they only care about
+     * metadata. */
+    WARN(freeproc, "failed loading 'exec' function: %s", dlerror());
     free(lib); lib = NULL;
-    free(libname); libname = NULL;
     return NULL;
   }
   dlerror();
   lib->file = dlsym(lib->lib, "file");
   if(NULL == lib->file ) {
-    /* just a warning; this function isn't required. */
-    WARN(freeproc, "failed loading 'file' function from %s: %s", libname,
-         dlerror());
+    TRACE(freeproc, "failed loading 'file' function: %s", dlerror());
   }
   dlerror();
   lib->finish = dlsym(lib->lib, "finish");
   if(NULL == lib->finish) {
-    /* just a warning; this function isn't required. */
-    WARN(freeproc, "failed loading 'finish' function from %s: %s", libname,
-         dlerror());
+    TRACE(freeproc, "failed loading 'finish' function: %s", dlerror());
   }
   dlerror();
   lib->gridsize = dlsym(lib->lib, "grid_size");
   if(NULL == lib->finish) {
-    /* just a warning; this function isn't required. */
-    WARN(freeproc, "failed loading 'grid_size' function from %s: %s", libname,
-         dlerror());
+    TRACE(freeproc, "failed loading 'grid_size' function: %s", dlerror());
   }
-  free(libname); libname = NULL;
   return lib;
 }
 
