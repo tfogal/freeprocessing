@@ -208,7 +208,8 @@ fwrite(const void* buf, size_t n, size_t nmemb, FILE* fp)
 int
 fclose(FILE* fp)
 {
-  assert(fclosef != NULL); /* only happens if fqn pointers don't load. */
+  /* only happens if fqn pointers don't load. */
+  if(fclosef == NULL) { fp_init(); }
   TRACE(opens, "fclosing %p", fp);
   struct openfile* of = of_find(files, fp_of, fp);
   if(of == NULL) {
