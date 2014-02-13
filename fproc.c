@@ -9,7 +9,7 @@
 
 DECLARE_CHANNEL(freeproc);
 
-struct teelib transferlibs[MAX_FREEPROCS] = {{NULL,NULL,NULL,NULL,NULL}};
+struct teelib transferlibs[MAX_FREEPROCS] = {{NULL,NULL,NULL,NULL,NULL,NULL}};
 
 static bool
 patternmatch(const struct teelib* tl, const char* match)
@@ -52,6 +52,13 @@ load_processor(FILE* from)
     free(lib); lib = NULL;
     free(libname); libname = NULL;
     return NULL;
+  }
+  dlerror();
+  lib->file = dlsym(lib->lib, "file");
+  if(NULL == lib->file ) {
+    /* just a warning; this function isn't required. */
+    WARN(freeproc, "failed loading 'file' function from %s: %s", libname,
+         dlerror());
   }
   dlerror();
   lib->finish = dlsym(lib->lib, "finish");
@@ -120,6 +127,18 @@ matches(const struct teelib* tlibs, const char* ptrn)
     }
   }
   return false;
+}
+
+void
+file(const struct teelib* tlibs, const char* ptrn)
+{
+  for(size_t i=0; i < MAX_FREEPROCS && tlibs[i].pattern; ++i) {
+    if(patternmatch(&tlibs[i], ptrn) && tlibs[i].file) {
+      /* since our file *is* the pattern to match against, it's also the file
+       * we want to give to the 'file' function. */
+      tlibs[i].file(ptrn);
+    }
+  }
 }
 
 void

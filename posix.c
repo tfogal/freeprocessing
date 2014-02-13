@@ -100,6 +100,7 @@ open(const char* fn, int flags, ...)
   assert(of->name == NULL);
   of->name = strdup(fn);
   of->fd = des;
+  file(transferlibs, fn);
   return des;
 }
 

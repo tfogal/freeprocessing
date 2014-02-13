@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 
+typedef void (ffqn)(const char* fn);
 typedef void (tfqn)(const char* fn, const void* buf, size_t n);
 typedef void (cfqn)(const char* fn);
 typedef void (szfqn)(const char* fn, const size_t d[3]);
@@ -11,6 +12,7 @@ typedef void (szfqn)(const char* fn, const size_t d[3]);
 struct teelib {
   char* pattern;
   void* lib;
+  ffqn* file;
   tfqn* transfer;
   cfqn* finish;
   szfqn* gridsize;
@@ -26,6 +28,8 @@ void unload_processors(struct teelib* tlibs);
 /* do any libraries match the given pattern? */
 bool matches(const struct teelib*, const char* ptrn);
 
+/* call our 'file' function on all libraries that match 'ptrn'. */
+void file(const struct teelib* tlibs, const char* ptrn);
 /* call our 'stream' function on all libraries that match 'ptrn'. */
 void stream(const struct teelib* tlibs, const char* ptrn, const void* buf,
             const size_t n);
