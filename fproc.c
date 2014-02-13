@@ -166,7 +166,7 @@ finish(const struct teelib* tlibs, const char* ptrn)
 {
   for(size_t i=0; i < MAX_FREEPROCS && tlibs[i].pattern; ++i) {
     const struct teelib* tl = &tlibs[i];
-    if(patternmatch(tl, ptrn)) {
+    if(patternmatch(tl, ptrn) && tl->finish) {
       tl->finish(ptrn);
     }
   }
