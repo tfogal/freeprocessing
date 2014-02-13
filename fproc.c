@@ -39,8 +39,7 @@ load_processor(FILE* from)
   lib->lib = dlopen(libname, RTLD_LAZY | RTLD_LOCAL | RTLD_DEEPBIND);
   free(libname); libname = NULL;
   if(NULL == lib->lib) {
-    ERR(freeproc, "failed loading processor for %s ('%s')", lib->pattern,
-        libname);
+    ERR(freeproc, "failed loading processor for %s", lib->pattern);
     free(lib); lib = NULL;
     return NULL;
   }
