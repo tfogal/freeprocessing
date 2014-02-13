@@ -84,12 +84,19 @@ load_processors(struct teelib* tlibs, const char* cfgfile)
 
   for(size_t i=0; !feof(fp) && i < MAX_FREEPROCS; ++i) {
     struct teelib* tl = load_processor(fp);
-    if(ferror(fp)) { ERR(freeproc, "ferr in '%s' cfg", cfgfile); }
+    if(ferror(fp)) {
+      ERR(freeproc, "ferr in '%s' cfg", cfgfile);
+      free(tl);
+      break;
+    }
     if(tl == NULL && !feof(fp)) {
       WARN(freeproc, "loading processor failed, giving up.");
       break;
     }
-    if(feof(fp)) { break; }
+    if(feof(fp)) {
+      free(tl);
+      break;
+    }
     tlibs[i] = *tl;
     free(tl);
   }
