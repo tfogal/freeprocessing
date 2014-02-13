@@ -36,7 +36,10 @@ load_processor(FILE* from)
   }
   TRACE(freeproc, "processor '%s' { %s }", lib->pattern, libname);
   dlerror();
-  lib->lib = dlopen(libname, RTLD_LAZY | RTLD_LOCAL | RTLD_DEEPBIND);
+  /* This is a bit weird.  I'd like to add RTLD_DEEPBIND here, but it seems to
+   * break some arbitrary cases, e.g. "bash /bin/ls".  For now, let's leave it
+   * disabled. */
+  lib->lib = dlopen(libname, RTLD_LAZY | RTLD_LOCAL /* | RTLD_DEEPBIND */);
   free(libname); libname = NULL;
   if(NULL == lib->lib) {
     ERR(freeproc, "failed loading processor for %s", lib->pattern);
