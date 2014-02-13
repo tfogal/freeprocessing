@@ -118,6 +118,9 @@ free_processors() /* ha, ha */
 __attribute__((constructor(200))) static void
 fp_init()
 {
+  /* make sure we don't instrument any more children. */
+  unsetenv("LD_PRELOAD");
+
   TRACE(generic, "[%ld (%ld)] loading fqn pointers..", (long)getpid(),
         (long)getppid());
   fopenf = dlsym(RTLD_NEXT, "fopen");
@@ -136,9 +139,6 @@ fp_init()
   h5dwritef = dlsym(RTLD_NEXT, "H5Dwrite");
   assert(fopenf != NULL);
   assert(fclosef != NULL);
-
-  /* make sure we don't instrument any more children. */
-  unsetenv("LD_PRELOAD");
 
   /* look for a config file and load libraries. */
   FILE* cfg = fopen("situ.cfg", "r");
