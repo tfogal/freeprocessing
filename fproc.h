@@ -22,7 +22,7 @@ extern struct teelib transferlibs[MAX_FREEPROCS];
 
 /** @returns NULL when it failed to read a processor (e.g. on EOF, error) */
 struct teelib* load_processor(FILE* from);
-void load_processors(struct teelib* tlibs, const char* cfgfile);
+void load_processors(struct teelib* tlibs, FILE* from);
 void unload_processors(struct teelib* tlibs);
 
 /* do any libraries match the given pattern? */

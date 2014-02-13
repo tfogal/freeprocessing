@@ -137,11 +137,23 @@ fp_init()
   assert(fopenf != NULL);
   assert(fclosef != NULL);
 
-  /* look for a config file and load libraries. */
-  load_processors(transferlibs, "situ.cfg");
-
   /* make sure we don't instrument any more children. */
   unsetenv("LD_PRELOAD");
+
+  /* look for a config file and load libraries. */
+  FILE* cfg = fopen("situ.cfg", "r");
+  if(cfg == NULL) {
+    const char* home = getenv("HOME");
+    char situcfg[512];
+    snprintf(situcfg, 512, "%s/.situ/situ.cfg", home);
+    cfg = fopen(situcfg, "r");
+  }
+  if(cfg == NULL) {
+    WARN(opens, "could not find a 'situ.cfg'; will not apply any processing.");
+    return;
+  }
+  load_processors(transferlibs, cfg);
+  fclose(cfg);
 }
 
 FILE*

@@ -73,19 +73,17 @@ load_processor(FILE* from)
 }
 
 void
-load_processors(struct teelib* tlibs, const char* cfgfile)
+load_processors(struct teelib* tlibs, FILE* fp)
 {
-  FILE* fp = fopen(cfgfile, "r");
   if(fp == NULL) { /* no config file; not much to do, then. */
-    WARN(freeproc, "config file '%s' not available, no situ to be done.",
-         cfgfile);
+    WARN(freeproc, "config file not available, no situ to be done.");
     return;
   }
 
   for(size_t i=0; !feof(fp) && i < MAX_FREEPROCS; ++i) {
     struct teelib* tl = load_processor(fp);
     if(ferror(fp)) {
-      ERR(freeproc, "ferr in '%s' cfg", cfgfile);
+      ERR(freeproc, "ferr processing cfg");
       free(tl);
       break;
     }
@@ -100,8 +98,6 @@ load_processors(struct teelib* tlibs, const char* cfgfile)
     tlibs[i] = *tl;
     free(tl);
   }
-
-  fclose(fp);
 }
 
 void
