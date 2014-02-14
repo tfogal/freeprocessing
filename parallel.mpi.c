@@ -34,7 +34,7 @@ broadcastlf(double* lf, size_t n)
 void
 broadcastzu(size_t* zu, size_t n)
 {
-  /* MPI doesn't have a "size_t" equivalent. Use tempvar instead. */
+  /* MPI doesn't have a "size_t" equivalent. Use a tempvar instead. */
   unsigned data[n];
   if(rank() == 0) {
     unsigned* v;

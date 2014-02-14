@@ -2,12 +2,9 @@
 #include <assert.h>
 #include <dlfcn.h>
 #include <errno.h>
-#include <fcntl.h>
-#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/types.h>
 #include <unistd.h>
 #include "debug.h"
 #include "fproc.h"
@@ -94,7 +91,7 @@ typedef int (ofpredicate)(const struct openfile*, const void*);
 /* find the openfile in the 'arr'ay which matches the 'p'redicate.
  * 'userdata' is the 'p'redicate's second argument */
 static struct openfile*
-of_find(struct openfile* arr, ofpredicate *p, const void* userdata)
+of_find(struct openfile* arr, ofpredicate * const p, const void* userdata)
 {
   for(size_t i=0; i < MAX_FILES; ++i) {
     if(p(&arr[i], userdata)) {
