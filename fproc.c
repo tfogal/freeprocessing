@@ -21,10 +21,16 @@ struct teelib*
 load_processor(FILE* from)
 {
   struct teelib* lib = calloc(1, sizeof(struct teelib));
-  char* libname = NULL;
   /* we're trying to parse something like this:
    * '*stuff* { exec: libnetz.so }' */
+#if defined(__GNUC__) && !defined(__INTEL_COMPILER)
+  char* libname = NULL;
   int m = fscanf(from, "%ms { exec: %ms }", &lib->pattern, &libname);
+#else
+  char* libname = calloc(sizeof(char), 512);
+  lib->pattern = calloc(sizeof(char), 512);
+  int m = fscanf(from, "%s { exec: %s }", lib->pattern, libname);
+#endif
   if(m == -1 && feof(from)) {
     free(lib); lib = NULL;
     return NULL;
