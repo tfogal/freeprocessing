@@ -156,6 +156,7 @@ read_field_config(FILE* fp, struct header* h)
       }
     }
   }
+  free(cfg);
   free(fld);
   return !feof(fp);
 }

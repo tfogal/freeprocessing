@@ -4,6 +4,7 @@
 #include <fnmatch.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include "compiler.h"
 #include "debug.h"
 #include "fproc.h"
 
@@ -32,11 +33,15 @@ load_processor(FILE* from)
   int m = fscanf(from, "%s { exec: %s }", lib->pattern, libname);
 #endif
   if(m == -1 && feof(from)) {
+    INTEL(free(libname));
+    INTEL(free(lib->pattern));
     free(lib); lib = NULL;
     return NULL;
   }
   if(m != 2) {
     ERR(freeproc, "only matched %d, error loading processors (%d)", m, errno);
+    INTEL(free(libname));
+    INTEL(free(lib->pattern));
     free(lib); lib = NULL;
     return NULL;
   }
