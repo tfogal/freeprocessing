@@ -72,8 +72,11 @@ f95-write-array: binaryio.o
 	$(FC) $^ -o $@
 
 clean:
-	rm -f $(obj) libfp.so libsitu.so libecho.so libmpitee.so libenzo.so \
-    envpar mpienv mpifopen mpiwrapper situ writecsv f95-write-array
+	rm -f $(obj) \
+    libecho.so libenzo.so libfp.so libmpitee.so libnek.so libnetz.so \
+    libsitu.so libtopython.so \
+    envpar mpienv mpifopen mpiwrapper situ writecsv f95-write-array \
+    hacktest modtest
 
 override.o: override.c
 	$(CC) -c $(CFLAGS_ORIDE) $^ -o $@
