@@ -13,6 +13,7 @@ DECLARE_CHANNEL(jsdd);
 
 static void recurse(FILE* fp, const json_value* v);
 static int64_t js_int(const json_value* v);
+static double js_double(const json_value* v);
 static const json_value* objderef(const json_value* v);
 static json_value* js_by_idx(const json_value* v, size_t idx);
 static size_t arrlen(const json_value* v);
@@ -135,6 +136,12 @@ js_int(const json_value* v)
   assert(v->type == json_integer);
   return v->u.integer;
 }
+static double
+js_double(const json_value* v)
+{
+  assert(v->type == json_double);
+  return v->u.dbl;
+}
 
 static const char*
 js_string(const json_value* v)
@@ -160,6 +167,7 @@ objderef(const json_value* v)
  * name is completely ignored.
  * This completely breaks if the 'i' above maps to anything but a basic
  * integer. */
+#if 0
 MALLOC static int64_t*
 arr_to_i64v(const json_value* v)
 {
@@ -170,6 +178,20 @@ arr_to_i64v(const json_value* v)
     const json_value* integer = objderef(js_by_idx(v, i));
     assert(integer->type == json_integer);
     values[i] = js_int(integer);
+  }
+  return values;
+}
+#endif
+MALLOC static double*
+arr_to_lfv(const json_value* v)
+{
+  assert(v->type == json_array);
+  const size_t len = arrlen(v);
+  double* values = calloc(len, sizeof(double));
+  for(size_t i=0; i < len; ++i) {
+    const json_value* dbl = objderef(js_by_idx(v, i));
+    assert(dbl->type == json_double);
+    values[i] = js_double(dbl);
   }
   return values;
 }
@@ -219,7 +241,7 @@ js_datatype(const json_value* root)
   assert(false);
   return GARBAGE;
 }
-MALLOC int64_t**
+MALLOC double**
 js_coord_arrays(const json_value* root, const size_t* dims, size_t ndims)
 {
   assert(root);
@@ -242,10 +264,10 @@ js_coord_arrays(const json_value* root, const size_t* dims, size_t ndims)
     }
   }
   TRACE(jsdd, "loading %zu-dimensional coord arrays.", ndims);
-  int64_t** rv = calloc(ndims, sizeof(int64_t*));
+  double** rv = calloc(ndims, sizeof(double*));
   for(size_t i=0; i < ndims; ++i) {
     const json_value* jscoordi = objderef(js_by_idx(jscoords, i));
-    rv[i] = arr_to_i64v(jscoordi);
+    rv[i] = arr_to_lfv(jscoordi);
   }
   return rv;
 }

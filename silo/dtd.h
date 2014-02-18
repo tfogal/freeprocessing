@@ -8,7 +8,7 @@ struct dtd {
   enum dtype datatype;
   size_t dims[3];
   /* rectilinear grids, these are where the coords are. */
-  int64_t* coords[3]; /* ... should probably be doubles.  someday. */
+  double* coords[3];
 };
 
 #endif

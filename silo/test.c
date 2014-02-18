@@ -62,7 +62,7 @@ main()
   size_t* dimens = js_dimensions(js, &ndims);
 
   printf("dtype: %d\n", (int)js_datatype(js));
-  int64_t** mycoords = js_coord_arrays(js, dimens, ndims);
+  double** mycoords = js_coord_arrays(js, dimens, ndims);
   assert(mycoords);
 
   for(size_t i=0; i < ndims; ++i) { free(mycoords[i]); }

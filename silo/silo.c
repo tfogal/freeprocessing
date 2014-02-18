@@ -62,9 +62,10 @@ read_metadata(const char* from, struct dtd* md)
     free(dims);
   }
   {
-    int64_t** coords = js_coord_arrays(js, md->dims, 3);
+    double** coords = js_coord_arrays(js, md->dims, 3);
     for(size_t i=0; i < ndims; ++i) {
-      memcpy(md->coords[i], coords[i], md->dims[i]*sizeof(int64_t));
+      md->coords[i] = malloc(sizeof(double) * md->dims[i]);
+      memcpy(md->coords[i], coords[i], md->dims[i]*sizeof(double));
       free(coords[i]);
     }
     free(coords);
@@ -81,7 +82,7 @@ add_mesh(DBfile* sl, const struct dtd* md)
   int dims[3] = { md->dims[0], md->dims[1], md->dims[2] };
   /* final option here should set DBOPT_COORDSYS to DB_CARTESIAN... */
   if(DBPutQuadmesh(sl, "fpmesh", NULL, (void*)md->coords, dims, ndims,
-     DB_INT, DB_COLLINEAR, NULL) == -1) {
+     DB_FLOAT, DB_COLLINEAR, NULL) == -1) {
     ERR(silo, "Error adding mesh to silo file.");
   }
   /* _Static_assert(1 == 0, "blah");*/
@@ -97,6 +98,7 @@ file(const char* fn)
   char* fname = malloc(sizeof(char)*strlen(fn)+8);
   strcpy(fname, fn);
   strcat(fname, ".silo");
+  TRACE(silo, "creating '%s'", fname);
   slf = DBCreate(fname, DB_CLOBBER, DB_LOCAL, NULL, DB_PDB);
   if(NULL == slf) {
     ERR(silo, "Could not create %s!\n", fname);
