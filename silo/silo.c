@@ -88,6 +88,16 @@ add_mesh(DBfile* sl, const struct dtd* md)
   /* _Static_assert(1 == 0, "blah");*/
 }
 
+/* derives the silo filename from the given filename. */
+MALLOC static char*
+silo_fname(const char* f)
+{
+  char* fname = malloc(sizeof(char)*strlen(f)+8);
+  strcpy(fname, f);
+  strcat(fname, ".silo");
+  return fname;
+}
+
 void
 file(const char* fn)
 {
@@ -95,9 +105,7 @@ file(const char* fn)
     ERR(silo, "We can only handle one silo file at a time. Ignoring %s.", fn);
     return;
   }
-  char* fname = malloc(sizeof(char)*strlen(fn)+8);
-  strcpy(fname, fn);
-  strcat(fname, ".silo");
+  char* fname = silo_fname(fn);
   TRACE(silo, "creating '%s'", fname);
   slf = DBCreate(fname, DB_CLOBBER, DB_LOCAL, NULL, DB_PDB);
   if(NULL == slf) {
@@ -106,10 +114,35 @@ file(const char* fn)
   free(fname);
   read_metadata("silo.cfg", &smd);
   add_mesh(slf, &smd);
+  if(DBMkDir(slf, "fpdir") != 0) {
+    ERR(silo, "could not create silo directory.");
+    DBClose(slf);
+    slf = NULL;
+  }
+  if(DBSetDir(slf, "fpdir") != 0) {
+    ERR(silo, "could not change silo directory.");
+    DBClose(slf);
+    slf = NULL;
+  }
 }
 
 void
 exec(const char* fn, const void* buf, size_t n)
 {
   TRACE(silo, "%s(%p %zu)", fn, buf, n);
+  int dims[3] = { smd.dims[0], smd.dims[1], smd.dims[2] };
+  if(DBPutQuadvar1(slf, "fpvar", "fpmesh", (void*)buf, dims, 3, NULL, 0,
+                   DB_FLOAT, DB_NODECENT, NULL) != 0) {
+    ERR(silo, "error writing quad var");
+  }
+}
+
+void
+finish(const char* fn)
+{
+  (void)fn;
+  if(DBClose(slf) != 0) {
+    WARN(silo, "could not close silo file.. data probably corrupt.");
+    slf = NULL;
+  }
 }
