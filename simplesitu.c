@@ -127,6 +127,7 @@ fopen(const char* name, const char* mode)
   if(of->fp == NULL) {
     free(of->name); of->name = NULL;
   }
+  file(transferlibs, name);
   return of->fp;
 }
 
