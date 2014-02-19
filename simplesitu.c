@@ -162,6 +162,7 @@ fclose(FILE* fp)
   if(rv != 0) {
     WARN(opens, "close failure! (%d)", rv);
   }
+  finish(transferlibs, of->name);
   of->fp = NULL;
   free(of->name);
   of->name = NULL;
