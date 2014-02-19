@@ -2,7 +2,7 @@
 #ifndef TJF_DTD_H
 #define TJF_DTD_H
 
-enum dtype { FLOAT32, FLOAT64, GARBAGE };
+enum dtype { BYTE, FLOAT32, FLOAT64, GARBAGE };
 
 struct dtd {
   enum dtype datatype;

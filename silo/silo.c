@@ -129,14 +129,28 @@ file(const char* fn)
   add_mesh(slf, &smd);
 }
 
+static int
+sdb_type(enum dtype dt)
+{
+  switch(dt) {
+    case FLOAT32: return DB_FLOAT;
+    case FLOAT64: return DB_DOUBLE;
+    case BYTE: return DB_CHAR;
+    case GARBAGE: assert(false); return DB_FLOAT;
+  }
+  assert(false);
+  return DB_FLOAT;
+}
+
 void
 exec(const char* fn, const void* buf, size_t n)
 {
-  TRACE(silo, "%s(%p %zu)", fn, buf, n);
+  (void) fn; (void) n;
   assert(slf);
   int dims[3] = { smd.dims[0], smd.dims[1], smd.dims[2] };
+  const int sdbtype = sdb_type(smd.datatype);
   if(DBPutQuadvar1(slf, "fpvar", "fpmesh", (void*)buf, dims, 3, NULL, 0,
-                   DB_DOUBLE, DB_NODECENT, NULL) != 0) {
+                   sdbtype, DB_NODECENT, NULL) != 0) {
     ERR(silo, "error writing quad var");
   }
 }

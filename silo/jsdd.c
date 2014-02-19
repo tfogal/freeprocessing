@@ -7,6 +7,7 @@
 #include <strings.h>
 #include "../compiler.h"
 #include "../debug.h"
+#include "dtd.h"
 #include "json.h"
 
 DECLARE_CHANNEL(jsdd);
@@ -222,7 +223,6 @@ js_dimensions(const json_value* root, size_t* ndims)
   return retval;
 }
 
-enum dtype { FLOAT32, FLOAT64, GARBAGE };
 enum dtype
 js_datatype(const json_value* root)
 {
@@ -237,6 +237,8 @@ js_datatype(const json_value* root)
     return FLOAT32;
   } else if(strcasecmp(str, "float64") == 0) {
     return FLOAT64;
+  } else if(strcasecmp(str, "byte") == 0 || strcasecmp(str, "char") == 0) {
+    return BYTE;
   }
   assert(false);
   return GARBAGE;
