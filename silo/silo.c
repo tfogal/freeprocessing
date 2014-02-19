@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <string.h>
 #include <silo.h>
 #include "../compiler.h"
@@ -75,17 +76,18 @@ read_metadata(const char* from, struct dtd* md)
 }
 
 static void
-add_mesh(DBfile* sl, const struct dtd* md)
+add_mesh(DBfile* sl, struct dtd* md)
 {
   const size_t ndims = md->dims[2] == 0 ? 2 : 3;
   /* since Silo's argument types are broken, copy into int array. */
   int dims[3] = { md->dims[0], md->dims[1], md->dims[2] };
   /* final option here should set DBOPT_COORDSYS to DB_CARTESIAN... */
-  if(DBPutQuadmesh(sl, "fpmesh", NULL, (void*)md->coords, dims, ndims,
-     DB_FLOAT, DB_COLLINEAR, NULL) == -1) {
+  assert(ndims == 3);
+  TRACE(silo, "adding mesh.");
+  if(DBPutQuadmesh(sl, "fpmesh", NULL, md->coords, dims, ndims,
+                   DB_DOUBLE, DB_NONCOLLINEAR, NULL) == -1) {
     ERR(silo, "Error adding mesh to silo file.");
   }
-  /* _Static_assert(1 == 0, "blah");*/
 }
 
 /* derives the silo filename from the given filename. */
@@ -112,8 +114,7 @@ file(const char* fn)
     ERR(silo, "Could not create %s!\n", fname);
   }
   free(fname);
-  read_metadata("silo.cfg", &smd);
-  add_mesh(slf, &smd);
+  TRACE(silo, "creating directories.");
   if(DBMkDir(slf, "fpdir") != 0) {
     ERR(silo, "could not create silo directory.");
     DBClose(slf);
@@ -124,15 +125,18 @@ file(const char* fn)
     DBClose(slf);
     slf = NULL;
   }
+  read_metadata("silo.cfg", &smd);
+  add_mesh(slf, &smd);
 }
 
 void
 exec(const char* fn, const void* buf, size_t n)
 {
   TRACE(silo, "%s(%p %zu)", fn, buf, n);
+  assert(slf);
   int dims[3] = { smd.dims[0], smd.dims[1], smd.dims[2] };
   if(DBPutQuadvar1(slf, "fpvar", "fpmesh", (void*)buf, dims, 3, NULL, 0,
-                   DB_FLOAT, DB_NODECENT, NULL) != 0) {
+                   DB_DOUBLE, DB_NODECENT, NULL) != 0) {
     ERR(silo, "error writing quad var");
   }
 }
@@ -140,7 +144,8 @@ exec(const char* fn, const void* buf, size_t n)
 void
 finish(const char* fn)
 {
-  (void)fn;
+  assert(slf);
+  TRACE(silo, "closing %s", fn);
   if(DBClose(slf) != 0) {
     WARN(silo, "could not close silo file.. data probably corrupt.");
     slf = NULL;
