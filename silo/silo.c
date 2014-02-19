@@ -148,6 +148,6 @@ finish(const char* fn)
   TRACE(silo, "closing %s", fn);
   if(DBClose(slf) != 0) {
     WARN(silo, "could not close silo file.. data probably corrupt.");
-    slf = NULL;
   }
+  slf = NULL;
 }
