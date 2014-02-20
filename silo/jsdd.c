@@ -252,6 +252,7 @@ js_coord_arrays(const json_value* root, const size_t* dims, size_t ndims)
         "(%zu versus %zu)", arrlen(jscoords), ndims);
     return NULL;
   }
+  assert(ndims > 0);
   for(size_t i=0; i < ndims; ++i) {
     const json_value* jscoordi = objderef(js_by_idx(jscoords, i));
     if(arrlen(jscoordi) != dims[i]) {
