@@ -68,7 +68,7 @@ fp_posix_init()
 int
 open(const char* fn, int flags, ...)
 {
-  mode_t mode;
+  mode_t mode = S_IRUSR | S_IWUSR;
   if(flags & O_CREAT) {
     va_list lst;
     va_start(lst, flags);
