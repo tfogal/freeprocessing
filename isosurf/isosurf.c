@@ -37,7 +37,7 @@ initialize()
   const int err2 = posix_memalign((void**)&data[1], sizeof(void*),
                                   dims[0]*dims[1]*sizeof(uint16_t));
   if(err2 != 0) {
-    ERR(iso, "error (%d) allocating buffer for slice 1", err2);
+    ERR(iso, "error (%d) allocating buffer for slice 2", err2);
   }
   memset(data[0], 0, dims[0]*dims[1]*sizeof(uint16_t));
   memset(data[1], 0, dims[0]*dims[1]*sizeof(uint16_t));
