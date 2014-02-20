@@ -215,11 +215,6 @@ js_dimensions(const json_value* root, size_t* ndims)
   }
   *ndims = arrlen(dims);
 
-  printf("{ ");
-  for(size_t i=0; i < *ndims; ++i) {
-    printf("%zu ", retval[i]);
-  }
-  printf("}\n");
   return retval;
 }
 
