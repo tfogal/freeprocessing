@@ -48,6 +48,7 @@ read_metadata(const char* from, struct dtd* md)
 {
   char* cfgtext = slurp(from);
   json_value* js = json_parse(cfgtext, strlen(cfgtext));
+  free(cfgtext);
   TRACE(silo, "type: %d", js->type);
   md->datatype = js_datatype(js);
   size_t ndims=0;
