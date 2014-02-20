@@ -1,4 +1,6 @@
+#define _POSIX_C_SOURCE 200112L
 #include <assert.h>
+#include <stdlib.h>
 #include <string.h>
 #include <silo.h>
 #include "../compiler.h"
@@ -13,6 +15,10 @@ DECLARE_CHANNEL(silo);
 static DBfile* slf = NULL;
 /* metadata for the silo file, read from 'silo.cfg'. */
 static struct dtd smd;
+/* buffer to use for input data when writes are small */
+static void* data = NULL;
+/* how much we've filled within data, in bytes. */
+static size_t filled = 0;
 
 MALLOC static char*
 slurp(const char* from)
@@ -101,6 +107,19 @@ silo_fname(const char* f)
   return fname;
 }
 
+static size_t
+width(enum dtype dt)
+{
+  switch(dt) {
+    case BYTE: return 1;
+    case FLOAT32: return sizeof(float);
+    case FLOAT64: return sizeof(double);
+    case GARBAGE: assert(false); return 0;
+  }
+  assert(false);
+  return 0;
+}
+
 void
 file(const char* fn)
 {
@@ -128,6 +147,17 @@ file(const char* fn)
   }
   read_metadata("silo.cfg", &smd);
   add_mesh(slf, &smd);
+
+  /* create buffer we'll fill up before dumping to silo. */
+  const size_t bytes = smd.dims[0]*smd.dims[1]*smd.dims[2] *
+                       width(smd.datatype);
+  const int err = posix_memalign((void**)&data, sizeof(void*), bytes);
+  if(err != 0) {
+    ERR(silo, "error (%d) allocating buffer for slice 0", err);
+    return;
+  }
+  memset(data, 0, bytes);
+  filled = 0;
 }
 
 static int
@@ -143,17 +173,51 @@ sdb_type(enum dtype dt)
   return DB_FLOAT;
 }
 
-void
-exec(const char* fn, const void* buf, size_t n)
+/* called when we fill up a buffer. Expects the buffer is described by 'smd'. */
+static void
+silodump(const void* buf)
 {
-  (void) fn; (void) n;
-  assert(slf);
   int dims[3] = { smd.dims[0], smd.dims[1], smd.dims[2] };
   const int sdbtype = sdb_type(smd.datatype);
   if(DBPutQuadvar1(slf, "fpvar", "fpmesh", (void*)buf, dims, 3, NULL, 0,
                    sdbtype, DB_NODECENT, NULL) != 0) {
     ERR(silo, "error writing quad var");
   }
+}
+PURE static size_t minzu(size_t a, size_t b) { return a < b ? a : b; }
+
+typedef void (filledfunc)(const void*);
+static void
+streaming(const void* buf, size_t n, filledfunc* f)
+{
+  (void)buf; (void)n; (void)f;
+  if(n == 0) { return; }
+  const size_t bufsize = smd.dims[0]*smd.dims[1]*smd.dims[2] *
+                         width(smd.datatype);
+  if(filled+n < bufsize) {
+    TRACE(silo, "%zu < %zu, copying %zu bytes to %zu", filled+n, bufsize, n,
+          filled);
+    memcpy(data+filled, buf, n);
+    filled += n;
+  } else {
+    const size_t mn = minzu(n, bufsize-filled);
+    assert(mn > 0);
+    TRACE(silo, "copying %zu bytes of %zu and then running.", mn, n);
+    memcpy(data+filled, buf, mn);
+    f(data);
+
+    filled = 0;
+    TRACE(silo, "recursing, offset by %zu bytes", mn);
+    streaming(buf+mn, n-mn, f);
+  }
+}
+
+void
+exec(const char* fn, const void* buf, size_t n)
+{
+  (void) fn;
+  assert(slf);
+  streaming(buf, n, silodump);
 }
 
 void
@@ -164,5 +228,7 @@ finish(const char* fn)
   if(DBClose(slf) != 0) {
     WARN(silo, "could not close silo file.. data probably corrupt.");
   }
+  free(data); data = NULL;
+  filled = 0;
   slf = NULL;
 }
