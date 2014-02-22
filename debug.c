@@ -1,5 +1,6 @@
 #define _POSIX_C_SOURCE 201112L
 #include <assert.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
@@ -101,15 +102,17 @@ symb_parse_options(struct symbdbgchannel* ch, const char* opt)
           olist = strchr(olist, ',')+1) {
         /* the "+1" gets rid of the minus or plus */
         enum SymbiontChanClass cls = name_class(olist+1);
+        /* we'll use this to shift; make sure it can fit in the shift. */
+        assert(cls < sizeof(unsigned));
         /* temporarily null out the subsequent options, for printing. */
         char* optend = strchr(olist, ',');
         if(optend) { *optend = '\0'; }
         if(*olist == '+') {
           printf("[%ld] %s: enabling %s\n", pid, ch->name, olist+1);
-          ch->flags |= (1<<cls);
+          ch->flags |= (1U<<(uint16_t)cls);
         } else if(*olist == '-') {
           printf("[%ld] %s: disabling %s\n", pid, ch->name, olist+1);
-          ch->flags &= ~(1<<cls);
+          ch->flags &= ~(1U<<(uint16_t)cls);
         }
         /* 'de-null' it. */
         if(optend) { *optend = ','; }
