@@ -70,7 +70,6 @@ broadcast_header(struct header* hdr)
 {
   broadcastzu(&hdr->nghost, 1);
   broadcastzu(hdr->dims, 3);
-  /* with this broadcast it crashes; without, all is klar: */
   broadcastzu(&hdr->nfields, 1);
   if(rank() != 0) {
     hdr->flds = calloc(hdr->nfields, sizeof(struct field));
@@ -195,6 +194,7 @@ tjfstart()
   /* after reading the config, we should know how many fields we have. */
   assert(binfield == NULL);
   assert(slicefield == NULL);
+  assert(hdr.nfields > 0);
   binfield = calloc(hdr.nfields, sizeof(FILE*));
   slicefield = calloc(hdr.nfields, sizeof(int));
   for(size_t i=0; i < hdr.nfields; ++i) {
@@ -401,6 +401,7 @@ apply_writelist(struct writelist wl, const size_t bsize[3],
     WARN(netz, "could not remove brick '%s': %d", from, errno);
   }
   for(size_t i=0; i < wl.n; ++i) {
+    assert(wl.list[i]);
     wl.list[i]->aio_fildes = fd;
     wl.list[i]->aio_buf = data + wl.srcoffset[i];
   }
