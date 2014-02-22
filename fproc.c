@@ -108,6 +108,12 @@ load_processors(struct teelib* tlibs, FILE* fp)
       free(tl);
       break;
     }
+    if(tl == NULL) {
+      ERR(freeproc, "impossible, load_processor can't give null without "
+          "reporting some kind of file error.");
+      assert(tl != NULL);
+      break;
+    }
     tlibs[i] = *tl;
     free(tl);
   }
