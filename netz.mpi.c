@@ -274,7 +274,7 @@ find_destination(const size_t pos[3], /* brick position of this processor */
 {
   struct writelist rv;
   rv.n = bsize[1]*bsize[2];
-  rv.list = calloc(rv.n, sizeof(struct aiocb));
+  rv.list = calloc(rv.n, sizeof(struct aiocb*));
   rv.srcoffset = calloc(rv.n, sizeof(size_t));
   for(size_t z=0; z < bsize[2]; ++z) {
     for(size_t y=0; y < bsize[1]; ++y) {
