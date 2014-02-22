@@ -105,7 +105,8 @@ FILE*
 fopen(const char* name, const char* mode)
 {
   if(mode == NULL) { errno = EINVAL; return NULL; }
-  if(strncmp(name, "/tmp", 4) == 0 || !matches(transferlibs, name)) {
+  if(mode[0] == 'r' || strncmp(name, "/tmp", 4) == 0 ||
+     !matches(transferlibs, name)) {
     TRACE(opens, "%s ignored by policy.", name);
     return fopenf(name, mode);
   }
