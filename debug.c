@@ -108,10 +108,10 @@ symb_parse_options(struct symbdbgchannel* ch, const char* opt)
         char* optend = strchr(olist, ',');
         if(optend) { *optend = '\0'; }
         if(*olist == '+') {
-          printf("[%ld] %s: enabling %s\n", pid, ch->name, olist+1);
+          fprintf(stderr, "[%ld] %s: enabling %s\n", pid, ch->name, olist+1);
           ch->flags |= (1U<<(uint16_t)cls);
         } else if(*olist == '-') {
-          printf("[%ld] %s: disabling %s\n", pid, ch->name, olist+1);
+          fprintf(stderr, "[%ld] %s: disabling %s\n", pid, ch->name, olist+1);
           ch->flags &= ~(1U<<(uint16_t)cls);
         }
         /* 'de-null' it. */
