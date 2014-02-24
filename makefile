@@ -21,6 +21,8 @@ all: $(obj) libfp.so libsitu.so writecsv mpiwrapper envpar mpienv situ \
 
 analyze: $(obj)
 	clang --analyze $(shell mpicc -showme:compile) -I/usr/include/python2.7 *.c
+	rm -f *.plist # clang creates a bunch of these annoying files.
+	cppcheck --quiet *.c
 
 writecsv: csv.o
 	$(CC) $^ -o $@ $(LDLIBS)
