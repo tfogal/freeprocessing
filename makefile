@@ -19,6 +19,9 @@ all: $(obj) libfp.so libsitu.so writecsv mpiwrapper envpar mpienv situ \
   mpifopen f95-write-array libecho.so libmpitee.so libnetz.so hacktest \
   modtest libenzo.so libnek.so libtopython.so
 
+analyze: $(obj)
+	clang --analyze $(shell mpicc -showme:compile) -I/usr/include/python2.7 *.c
+
 writecsv: csv.o
 	$(CC) $^ -o $@ $(LDLIBS)
 
