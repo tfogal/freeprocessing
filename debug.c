@@ -14,7 +14,7 @@ __attribute__((constructor(101))) static void
 fp_dbg_init()
 {
   pid = (long) getpid();
-  color_enabled = isatty(STDOUT_FILENO);
+  color_enabled = isatty(STDOUT_FILENO) == 1;
 #if 0
   fprintf(stderr, "debugging setup: pid %ld, %s color\n", pid,
           color_enabled ? "" : "no");
@@ -24,7 +24,7 @@ fp_dbg_init()
 static bool
 dbgchannel_enabled(const struct symbdbgchannel* chn, enum SymbiontChanClass c)
 {
-  return chn->flags & (1 << c);
+  return (chn->flags & (1U << c)) > 0;
 }
 
 /* ANSI escape codes for colors. */
