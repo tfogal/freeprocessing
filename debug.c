@@ -60,7 +60,7 @@ symb_dbg(enum SymbiontChanClass type, const struct symbdbgchannel* channel,
   if(dbgchannel_enabled(channel, type)) {
     const char* fixit = type==SymbiontFixme ? "-FIXME" : "";
     printf("%s[%ld](%s%s) ", color(type), pid, func, fixit);
-    vprintf(format, args);
+    (void) vprintf(format, args);
     printf("%s\n", color_enabled ? C_NORM : "");
   }
   va_end(args);
