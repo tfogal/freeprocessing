@@ -72,6 +72,7 @@ broadcast_header(struct header* hdr)
   broadcastzu(hdr->dims, 3);
   broadcastzu(&hdr->nfields, 1);
   if(rank() != 0) {
+    assert(hdr->flds == NULL);
     hdr->flds = calloc(hdr->nfields, sizeof(struct field));
     printf("allocated %zu fields: %p\n", hdr->nfields, hdr->flds);
   }
