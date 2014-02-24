@@ -32,7 +32,7 @@ struct symbdbgchannel {
 };
 
 #define DEFAULT_CHFLAGS \
-  (1 << SymbiontErr) | (1 << SymbiontWarn) | (1 << SymbiontFixme)
+  (1U << SymbiontErr) | (1U << SymbiontWarn) | (1U << SymbiontFixme)
 /* creates a new debug channel.  debug channels are private to implementation,
  * and should not be declared in header files. */
 #define DECLARE_CHANNEL(ch) \
