@@ -121,15 +121,9 @@ read_field_config(FILE* fp, struct header* h)
   assert(fp);
   assert(h);
 
-#if defined(__GNUC__) && !defined(__INTEL_COMPILER)
-  char* fld = NULL;
-  char* cfg = NULL;
-  const int m = fscanf(fp, "%ms { %ms }", &fld, &cfg);
-#else
   char* fld = calloc(sizeof(char), 512);
   char* cfg = calloc(sizeof(char), 512);
-  const int m = fscanf(fp, "%s { %s }", fld, cfg);
-#endif
+  const int m = fscanf(fp, "%511s { %511s }", fld, cfg);
   if(feof(fp)) {
     TRACE(netz, "EOF scanning config, we must be done.");
     free(fld);

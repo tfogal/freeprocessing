@@ -22,26 +22,21 @@ struct teelib*
 load_processor(FILE* from)
 {
   struct teelib* lib = calloc(1, sizeof(struct teelib));
+  assert(lib != NULL);
   /* we're trying to parse something like this:
    * '*stuff* { exec: libnetz.so }' */
-#if defined(__GNUC__) && !defined(__INTEL_COMPILER)
-  char* libname = NULL;
-  int m = fscanf(from, "%ms { exec: %ms }", &lib->pattern, &libname);
-#else
-  char* libname = calloc(sizeof(char), 512);
+  char libname[512];
   lib->pattern = calloc(sizeof(char), 512);
-  int m = fscanf(from, "%s { exec: %s }", lib->pattern, libname);
-#endif
+  assert(lib->pattern != NULL);
+  int m = fscanf(from, "%511s { exec: %511s }", lib->pattern, libname);
+
   if(m == -1 && feof(from)) {
-    INTEL(free(libname));
-    INTEL(free(lib->pattern));
     free(lib); lib = NULL;
     return NULL;
   }
   if(m != 2) {
     ERR(freeproc, "only matched %d, error loading processors (%d)", m, errno);
-    INTEL(free(libname));
-    INTEL(free(lib->pattern));
+    free(lib->pattern);
     free(lib); lib = NULL;
     return NULL;
   }
@@ -51,9 +46,10 @@ load_processor(FILE* from)
    * break some arbitrary cases, e.g. "bash /bin/ls".  For now, let's leave it
    * disabled. */
   lib->lib = dlopen(libname, RTLD_LAZY | RTLD_LOCAL /* | RTLD_DEEPBIND */);
-  free(libname); libname = NULL;
   if(NULL == lib->lib) {
-    ERR(freeproc, "failed loading processor for %s", lib->pattern);
+    ERR(freeproc, "failed loading processor for %s (lib %s)",
+        lib->pattern, libname);
+    free(lib->pattern);
     free(lib); lib = NULL;
     return NULL;
   }
@@ -64,6 +60,7 @@ load_processor(FILE* from)
      * function is a bit weird.  but, still valid; maybe they only care about
      * metadata. */
     WARN(freeproc, "failed loading 'exec' function: %s", dlerror());
+    free(lib->pattern);
     free(lib); lib = NULL;
     return NULL;
   }
