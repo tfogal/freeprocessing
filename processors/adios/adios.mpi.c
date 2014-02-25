@@ -4,8 +4,8 @@
 #include <stdio.h>
 #include <string.h>
 #include "adios.h"
-#include "../debug.h"
-#include "../parallel.mpi.h"
+#include "debug.h"
+#include "parallel.mpi.h"
 
 DECLARE_CHANNEL(adios);
 

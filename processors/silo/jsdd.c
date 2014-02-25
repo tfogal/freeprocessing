@@ -5,8 +5,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <strings.h>
-#include "../compiler.h"
-#include "../debug.h"
+#include "compiler.h"
+#include "debug.h"
 #include "dtd.h"
 #include "json.h"
 

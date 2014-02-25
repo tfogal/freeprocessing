@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include "../debug.h"
+#include "debug.h"
 
 DECLARE_CHANNEL(track);
 

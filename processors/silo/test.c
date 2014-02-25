@@ -3,8 +3,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <strings.h>
-#include "../compiler.h"
-#include "../debug.h"
+#include "compiler.h"
+#include "debug.h"
 #include "jsdd.h"
 #include "json.h"
 

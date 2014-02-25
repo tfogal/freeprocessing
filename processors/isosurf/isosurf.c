@@ -2,8 +2,8 @@
 #include <assert.h>
 #include <inttypes.h>
 #include <string.h>
-#include "../compiler.h"
-#include "../debug.h"
+#include "compiler.h"
+#include "debug.h"
 #include "mcubes.h"
 
 DECLARE_CHANNEL(iso);

@@ -4,7 +4,7 @@
 #define TJF_JSDD_H
 
 #include <inttypes.h>
-#include "../compiler.h"
+#include "compiler.h"
 #include "dtd.h"
 #include "json.h"
 

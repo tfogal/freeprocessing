@@ -2,7 +2,7 @@
 #include <cstring>
 #include <cinttypes>
 #include <cerrno>
-#include "../debug.h"
+#include "debug.h"
 #include "MC.h"
 #include "Vectors.h"
 typedef std::array<float,3> FLOATVECTOR3;

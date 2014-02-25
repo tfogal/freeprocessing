@@ -3,8 +3,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <silo.h>
-#include "../compiler.h"
-#include "../debug.h"
+#include "compiler.h"
+#include "debug.h"
 #include "jsdd.h"
 #include "json.h"
 #include "dtd.h"

@@ -1,12 +1,12 @@
 WARN=-Wall -Wextra
-CFLAGS=-std=c99 -fPIC $(WARN) -ggdb
+CFLAGS=-std=c99 -fPIC $(WARN) -ggdb -I../../
 LDFLAGS:=-Wl,--no-undefined
 LDLIBS=-ldl -lrt
 obj=trackdata.o
 
 all: $(obj) libtrack.so
 
-libtrack.so: trackdata.o ../debug.o
+libtrack.so: trackdata.o ../../debug.o
 	$(CC) -ggdb -fPIC -shared $^ -o $@ $(LDFLAGS) $(LDLIBS)
 
 clean:
