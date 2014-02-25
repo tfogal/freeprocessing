@@ -10,13 +10,13 @@ LDFLAGS=-Wl,--no-allow-shlib-undefined -Wl,--no-undefined
 LDFLAGS:=-Wl,--no-undefined
 LDLIBS=-ldl -lrt
 obj=evfork.o forkenv.o override.o csv.o simplesitu.o vis.o parenv.mpi.o \
-  runner.mpi.o setenv.mpi.o open.mpi.o binaryio.o debug.o \
+  runner.mpi.o setenv.mpi.o open.mpi.o debug.o \
   writebin.mpi.o netz.mpi.o parallel.mpi.o ctest.mpi.o modified.o \
   testmodified.o enzo.mpi.o echo.mpi.o nek5k.mpi.o png.o tonumpy.mpi.o \
   fproc.o posix.o h5.o
 
 all: $(obj) libfp.so libsitu.so writecsv mpiwrapper envpar mpienv situ \
-  mpifopen f95-write-array libecho.so libmpitee.so libnetz.so hacktest \
+  mpifopen libecho.so libmpitee.so libnetz.so hacktest \
   modtest libenzo.so libnek.so libtopython.so
 
 analyze: $(obj)
@@ -73,20 +73,14 @@ envpar: parenv.mpi.o
 situ: forkenv.o evfork.o
 	$(CC) -fPIC $^ -o $@
 
-f95-write-array: binaryio.o
-	$(FC) $^ -o $@
-
 clean:
 	rm -f $(obj) \
     libecho.so libenzo.so libfp.so libmpitee.so libnek.so libnetz.so \
     libsitu.so libtopython.so \
-    envpar mpienv mpifopen mpiwrapper situ writecsv f95-write-array \
+    envpar mpienv mpifopen mpiwrapper situ writecsv \
     hacktest modtest
 
 override.o: override.c
 	$(CC) -c $(CFLAGS_ORIDE) $^ -o $@
 simplesitu.o: simplesitu.c
 	$(CC) -c $(CFLAGS_ORIDE) $^ -o $@
-
-%.o: %.f95
-	$(FC) $(FFLAGS) -c $^ -o $@
