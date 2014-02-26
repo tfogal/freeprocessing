@@ -75,9 +75,9 @@ load_processor(FILE* from)
     TRACE(freeproc, "failed loading 'finish' function: %s", dlerror());
   }
   dlerror();
-  lib->gridsize = dlsym(lib->lib, "grid_size");
+  lib->metadata = dlsym(lib->lib, "metadata");
   if(NULL == lib->finish) {
-    TRACE(freeproc, "failed loading 'grid_size' function: %s", dlerror());
+    TRACE(freeproc, "failed loading 'metadata' function: %s", dlerror());
   }
   return lib;
 }
@@ -166,12 +166,13 @@ stream(const struct teelib* tlibs, const char* ptrn, const void* buf,
 }
 
 void
-gridsize(const struct teelib* tlibs, const char* ptrn, const size_t dims[3])
+metadata(const struct teelib* tlibs, const char* ptrn, const size_t dims[3],
+         enum FPDataType type)
 {
   for(size_t i=0; i < MAX_FREEPROCS && tlibs[i].pattern; ++i) {
     if(patternmatch(&tlibs[i], ptrn)) {
-      if(tlibs[i].gridsize) {
-        tlibs[i].gridsize(ptrn, dims);
+      if(tlibs[i].metadata) {
+        tlibs[i].metadata(ptrn, dims, type);
       }
     }
   }

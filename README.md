@@ -59,11 +59,11 @@ invocations.
 
 Libraries can optionally implement two additional functions:
 
-  2. `void grid_size(const char* fn, const size_t dims[3])`, and
+  2. `void metadata(const char* fn, const size_t dims[3], int)`, and
   3. `void finish(const char* fn)`
 
-`grid_size` is called directly before `exec`, in the case that the
-simulation knows the dimensions of the impending `write`.  This is only
+`metadata` is called directly before `exec`, in the case that the
+simulation knows metadata for the impending `write`.  This is only
 possible with some self-describing transport mechanisms.  If your code
 does not utilize IO middleware, this function will never be called.
 In this case, you have to provide any needed metadata yourself.  We

@@ -95,5 +95,4 @@ exec(const char* fn, const void* buf, size_t n)
 }
 #if 0
 void finish(const char* fn) { (void)fn; }
-void grid_size(const char* fn, const size_t dims[3]) { (void)fn; (void)dims; }
 #endif

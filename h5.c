@@ -48,12 +48,13 @@ struct h5meta {
   hid_t dset;
   hid_t space;
   char* name;
+  enum FPDataType type;
 };
 
 #define MAX_FILES 1024
 static const size_t N_SPACES = MAX_FILES;
 static struct h5spaces spaces[MAX_FILES] = {{0, {0,0,0}}};
-static struct h5meta metah5[MAX_FILES] = {{0, 0, NULL}};
+static struct h5meta metah5[MAX_FILES] = {{0, 0, NULL, FP_FLOAT32}};
 
 __attribute__((constructor(250))) static void
 fp_h5_init()
@@ -176,6 +177,11 @@ H5Dcreate1(hid_t loc, const char *name, hid_t type, hid_t space, hid_t dcpl)
       metah5[i].dset = rv;
       metah5[i].space = space;
       metah5[i].name = strdup(name);
+      switch(type) {
+        case 50331691: metah5[i].type = FP_FLOAT64; break;
+        default:
+          ERR(hdf5, "unknown h5type: %d", type);
+      }
       break;
     }
   }
@@ -209,6 +215,20 @@ H5Dclose(hid_t id)
   return h5dclosef(id);
 }
 
+static size_t
+typewidth(enum FPDataType t)
+{
+  switch(t) {
+    case FP_INT8: case FP_UINT8: return 1;
+    case FP_INT16: case FP_UINT16: return 2;
+    case FP_INT32: case FP_UINT32: return 4;
+    case FP_INT64: case FP_UINT64: return 8;
+    case FP_FLOAT32: return 4;
+    case FP_FLOAT64: return 8;
+  }
+  assert(false);
+}
+
 herr_t
 H5Dwrite(hid_t dset, hid_t memtype, hid_t memspace, hid_t filespace,
          hid_t plist, const void* buf)
@@ -221,10 +241,10 @@ H5Dwrite(hid_t dset, hid_t memtype, hid_t memspace, hid_t filespace,
       TRACE(hdf5, "h-write %s [%zu %zu %zu] %p", metah5[i].name,
             spaces[sidx].dims[0], spaces[sidx].dims[1], spaces[sidx].dims[2],
             buf);
-      gridsize(transferlibs, metah5[i].name, spaces[sidx].dims);
-      /* sizeof(double) is a hack; TODO pull it from HDF5. */
+      metadata(transferlibs, metah5[i].name, spaces[sidx].dims,
+               metah5[i].type);
       const size_t n = spaces[sidx].dims[0] * spaces[sidx].dims[1] *
-                       spaces[sidx].dims[2] * sizeof(double);
+                       spaces[sidx].dims[2] * typewidth(metah5[i].type);
       stream(transferlibs, metah5[i].name, buf, n);
       break;
     }
