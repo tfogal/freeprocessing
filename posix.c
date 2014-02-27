@@ -75,7 +75,7 @@ open(const char* fn, int flags, ...)
     mode = va_arg(lst, mode_t);
     va_end(lst);
   }
-  if(!matches(transferlibs, fn) ||
+  if(!matches(transferlibs, fn) || flags & O_RDONLY ||
      strncmp(fn, "/tmp", 4) == 0 ||
      strncmp(fn, "/dev", 4) == 0) {
     TRACE(posix, "%s opened, but ignored by policy.", fn);
