@@ -15,25 +15,11 @@
 #include <mpi.h>
 #include "debug.h"
 #include "parallel.mpi.h"
+#include "ppconfig.h"
 
 DECLARE_CHANNEL(netz);
 
 #define NULLIFY (void*)0xdeadbeef
-
-struct field {
-  char* name;
-  size_t lower; /* offset of this field in bytestream */
-  size_t upper; /* final byte in stream +1 for this field */
-  bool out3d; /* should we output a unified 3D volume of this field? */
-  size_t slice; /* the slice to output, +1.  0 represents no slice output. */
-};
-struct header {
-  size_t nghost; /* number of ghost cells, per-dim */
-  size_t dims[3]; /* dimensions of each brick, with ghost cells */
-  size_t nfields;
-  struct field* flds;
-  size_t nbricks[3]; /* number of bricks, per dimension */
-};
 
 /* we will open any number of files---one per field they want written---and
  * stream the binary data to those files.   this array holds those fields.
@@ -48,7 +34,21 @@ static int* slicefield = NULL;
  * of the fields the user has decided they want to see. */
 static size_t offset = 0; /* current offset in output file. */
 /* Header info is parsed when we close the 'header.txt' file.  See 'finish'. */
-static struct header hdr = {0, {0,0,0}, 0, NULL, {0,0,0}};
+static struct header hdr = {0, {0,0,0}, {0,0,0}};
+/* information on which slices we should output. */
+static struct slice* slices = NULL;
+/* number of slices in the above array. */
+static size_t nslices = 0;
+/* field information, so we can figure out which source bytes to use. */
+static struct field* flds = NULL;
+/* number of fields in the above array. */
+static size_t nfields = 0;
+
+/* everything is dynamic, so we could really support any number of fields.  but
+ * at some point it just gets ridiculous; there aren't that many fields in a
+ * simulation.  if 'nfields' exceeds this, it almost certainly means we stomped
+ * memory somewhere. */
+static const size_t ABSURD_NFIELDS = 16384;
 
 void
 wait_for_debugger()
@@ -66,39 +66,62 @@ wait_for_debugger()
 }
 
 static void
+broadcast_fields()
+{
+  broadcastzu(&nfields, 1);
+  assert(nfields <= 16384 && "not an absurd number of fields");
+  if(rank() != 0) {
+    assert(flds == NULL && "not previously allocated");
+    flds = calloc(nfields, sizeof(struct field));
+    TRACE(netz, "allocated %zu fields: %p", nfields, flds);
+  }
+  for(size_t i=0; i < nfields; ++i) {
+    size_t len;
+    if(rank() == 0) { len = strlen(flds[i].name); }
+    broadcastzu(&len, 1);
+    assert(len < 32 && "NETZ field names are usually 4 chars.");
+    if(rank() != 0) { flds[i].name = calloc(len+1, sizeof(char)); }
+    broadcasts(flds[i].name, len);
+    broadcastzu(&flds[i].lower, 1);
+    broadcastzu(&flds[i].upper, 1);
+    broadcastb(&flds[i].out3d, 1);
+  }
+}
+
+static void
 broadcast_header(struct header* hdr)
 {
   broadcastzu(&hdr->nghost, 1);
   broadcastzu(hdr->dims, 3);
-  broadcastzu(&hdr->nfields, 1);
-  if(rank() != 0) {
-    assert(hdr->flds == NULL);
-    hdr->flds = calloc(hdr->nfields, sizeof(struct field));
-    printf("allocated %zu fields: %p\n", hdr->nfields, hdr->flds);
-  }
-  for(size_t i=0; i < hdr->nfields; ++i) {
-    size_t len;
-    if(rank() == 0) { len = strlen(hdr->flds[i].name); }
-    broadcastzu(&len, 1);
-    if(rank() != 0) { hdr->flds[i].name = calloc(len+1, sizeof(char)); }
-    broadcasts(hdr->flds[i].name, len);
-    broadcastzu(&hdr->flds[i].lower, 1);
-    broadcastzu(&hdr->flds[i].upper, 1);
-    broadcastb(&hdr->flds[i].out3d, 1);
-  }
   broadcastzu(hdr->nbricks, 3);
 }
 
 static void
+broadcast_slices()
+{
+  broadcastzu(&nslices, 1);
+  if(rank() != 0) {
+    assert(slices == NULL && "not previously allocated");
+    slices = calloc(sizeof(struct slice), nslices);
+  }
+  for(size_t i=0; i < nslices; ++i) {
+    size_t ax = (size_t)slices[i].axis;
+    broadcastzu(&ax, 1);
+    slices[i].axis = ax;
+    broadcastzu(&slices[i].idx, 1);
+  }
+}
+
+__attribute__((unused)) static void
 print_header(const struct header hdr)
 {
   TRACE(netz, "%zu ghost cells per dim\n", hdr.nghost);
   TRACE(netz, "brick size: %zux%zux%zu\n", hdr.dims[0],hdr.dims[1],hdr.dims[2]);
   TRACE(netz, "%zu x %zu x %zu bricks\n", hdr.nbricks[0], hdr.nbricks[1],
         hdr.nbricks[2]);
-  TRACE(netz, "%zu fields:\n", hdr.nfields);
-  for(size_t i=0; i < hdr.nfields; ++i) {
-    TRACE(netz, "\t%-5s at offset %25zu\n", hdr.flds[i].name,hdr.flds[i].lower);
+  TRACE(netz, "%zu fields:\n", nfields);
+  for(size_t i=0; i < nfields; ++i) {
+    TRACE(netz, "\t%-5s at offset %25zu\n", flds[i].name, flds[i].lower);
   }
 }
 
@@ -121,38 +144,66 @@ read_field_config(FILE* fp, struct header* h)
   assert(fp);
   assert(h);
 
-  char* fld = calloc(sizeof(char), 512);
-  char* cfg = calloc(sizeof(char), 512);
+  char fld[512];
+  char cfg[512];
   const int m = fscanf(fp, "%511s { %511s }", fld, cfg);
   if(feof(fp)) {
     TRACE(netz, "EOF scanning config, we must be done.");
-    free(fld);
-    free(cfg);
     return false;
   }
-  if(m != 2) {
+  if(m != 1 && m != 2 ) {
     WARN(netz, "could not match field...");
-    free(fld);
-    free(cfg);
     return false;
   }
-  for(size_t i=0; i < h->nfields; ++i) {
-    if(strcasecmp(h->flds[i].name, fld) == 0) {
-      /* the config can be either "3D" or "slice=Z" */
-      if(strncasecmp(cfg, "3d", 2) == 0) {
-        TRACE(netz, "will create 3D vol of '%s'", h->flds[i].name);
-        h->flds[i].out3d = 1;
-      } else if(strncasecmp(cfg, "slice", 5) == 0) {
-        /* we use 0 to denote 'no slice'. */
-        h->flds[i].slice = parse_uint(cfg+6) + 1; /* 6 == strlen("slice=") */
-        TRACE(netz, "will write slice %zu of '%s'", h->flds[i].slice-1,
-              h->flds[i].name);
-      }
+  const size_t len = strlen(fld);
+  for(size_t i=0; i < nfields; ++i) {
+    /* the config can be "3D" to enable 3d output for that slice. */
+    if(strncasecmp(flds[i].name, fld, len) == 0 &&
+       strncasecmp(cfg, "3d", 2) == 0) {
+        TRACE(netz, "will create 3D vol of '%s'", flds[i].name);
+        flds[i].out3d = 1;
     }
   }
-  free(cfg);
-  free(fld);
   return !feof(fp);
+}
+
+MALLOC struct slice*
+parse_sliceinfo(FILE* fp, size_t* n)
+{
+  int m = fscanf(fp, "slices = [");
+  if(m < 0) {
+    ERR(netz, "error parsing slice info (%d)", m);
+    return NULL;
+  }
+  struct slice* retval = NULL;
+  char axis = '\0';
+  size_t slicenum = 0;
+  size_t seen = 0;
+  while((m = fscanf(fp, "%*[ \n\t]%[xyz] = %zu", &axis, &slicenum)) >= 1) {
+    ++seen;
+    void* mem = realloc(retval, sizeof(struct slice)*seen);
+    if(mem == NULL) {
+      ERR(netz, "allocation failure");
+      free(retval);
+      return NULL;
+    }
+    retval = mem;
+    switch(axis) {
+      case 'x': retval[seen-1].axis = X; break;
+      case 'y': retval[seen-1].axis = Y; break;
+      case 'z': retval[seen-1].axis = Z; break;
+      default:
+        assert(false && "charmatch in fscanf ensures this can't happen.");
+        ERR(netz, "unknown axis '%c'!", axis);
+    }
+    retval[seen-1].idx = slicenum;
+  }
+  *n = seen;
+  TRACE(netz, "found %zu slices (%d).", *n, m);
+  for(size_t i=0; i < *n; ++i) {
+    TRACE(netz, "\t'%d' %zu", retval[i].axis, retval[i].idx);
+  }
+  return retval;
 }
 
 /* reads the PsiPhi configuration file.  we expect to find a bunch of field
@@ -166,12 +217,53 @@ read_config(const char* from, struct header* h)
     ERR(netz, "could not read configuration file '%s'", from);
     return;
   }
-  for(size_t i=0; i < h->nfields; ++i) { /* clear field configs. */
-    h->flds[i].out3d = 0;
-    h->flds[i].slice = 0;
-  }
+  assert(nfields > 0 && "field information missing; didn't read config?");
+  slices = parse_sliceinfo(cfg, &nslices);
   while(read_field_config(cfg, h)) { ; }
   fclose(cfg);
+}
+
+PURE static char
+axesname(enum Axis ax)
+{
+  switch(ax) {
+    case X: return 'x';
+    case Y: return 'y';
+    case Z: return 'z';
+  };
+  assert(false);
+  return 'a';
+}
+
+static void
+free_header(struct header* head)
+{
+  head->nghost = 0U;
+  head->dims[0] = head->dims[1] = head->dims[2] = 0U;
+  head->nbricks[0] = head->nbricks[1] = head->nbricks[2] = 0U;
+}
+
+static void
+free_fields()
+{
+  TRACE(netz, "freeing %zu fields", nfields);
+  for(size_t i=0; i < nfields; ++i) {
+    free(flds[i].name);
+    flds[i].name = NULL;
+    flds[i].out3d = false;
+    flds[i].lower = flds[i].upper = 0U;
+  }
+  free(flds);
+  flds = NULL;
+  nfields = 0;
+}
+
+static void
+free_slices()
+{
+  TRACE(netz, "freeing slice array (%p) of %zu elements", slices, nslices);
+  free(slices);
+  slices = NULL;
 }
 
 static void
@@ -179,36 +271,43 @@ tjfstart()
 {
   /* when we are starting the binary file, we know that we are done with the
    * ascii data descriptor. */
-  broadcast_header(&hdr);
-  if(rank() != 0) {
-    print_header(hdr);
+  if(rank() == 0) {
+    read_config("psiphi.cfg", &hdr);
+  } else {
+    free_fields();
+    free_slices();
   }
+  broadcast_header(&hdr);
+  broadcast_fields();
+  broadcast_slices();
   offset = 0;
-  read_config("psiphi.cfg", &hdr);
 
   /* after reading the config, we should know how many fields we have. */
   assert(binfield == NULL);
   assert(slicefield == NULL);
-  assert(hdr.nfields > 0);
-  binfield = calloc(hdr.nfields, sizeof(FILE*));
-  slicefield = calloc(hdr.nfields, sizeof(int));
-  for(size_t i=0; i < hdr.nfields; ++i) {
-    if(hdr.flds[i].out3d) {
+  assert(nfields < ABSURD_NFIELDS);
+  assert(nslices < hdr.dims[0]*hdr.dims[1]*hdr.dims[2]);
+  binfield = calloc(nfields, sizeof(FILE*));
+  slicefield = calloc(nfields*nslices, sizeof(int));
+  assert(slicefield);
+  for(size_t i=0; i < nfields; ++i) {
+    if(flds[i].out3d) {
       char fname[256];
-      snprintf(fname, 256, "%s.%zu", hdr.flds[i].name, rank());
+      snprintf(fname, 256, "%s.%zu", flds[i].name, rank());
       binfield[i] = fopen(fname, "wb");
       if(!binfield[i]) {
         ERR(netz, "could not create '%s'", fname);
         return;
       }
     }
-    slicefield[i] = -1; /* default to -1, i.e. 'no file open' */
-    if(hdr.flds[i].slice) {
+    for(size_t slice=0; slice < nslices; ++slice) {
       char fname[256];
-      snprintf(fname, 256, "%s.slice%zu", hdr.flds[i].name,
-               hdr.flds[i].slice-1);
-      slicefield[i] = open(fname, O_WRONLY | O_TRUNC | O_CLOEXEC | O_CREAT,
-                           S_IWUSR | S_IRUSR | S_IRGRP);
+      snprintf(fname, 256, "%s.slice%c%zu", flds[i].name,
+               axesname(slices[slice].axis),
+               slices[slice].idx);
+      const size_t idx = (i*nslices) + slice;
+      slicefield[idx] = open(fname, O_WRONLY | O_TRUNC | O_CLOEXEC | O_CREAT,
+                             S_IWUSR | S_IRUSR | S_IRGRP);
       if(-1 == slicefield[i]) {
         ERR(netz, "could not create '%s'", fname);
         abort();
@@ -319,8 +418,10 @@ wlist2d(const size_t vox[3], /* n voxels for whole domain */
   /* we don't use srcoffset, since we have the buffer.  just set it to 0s. */
   writes.srcoffset = calloc(nwrites, sizeof(size_t));
   writes.list[0] = calloc(1, sizeof(struct aiocb));
+#if 1
   TRACE(netz, "sline(%zu), vox0(%zu), bs0(%zu), layout0(%zu), s(%zu)", sline,
         vox[0], bs0, layout[0], s);
+#endif
   writes.list[0]->aio_offset = (sline*vox[0]+bs0*layout[0]+s) * c;
   writes.list[0]->aio_buf = (void*)a;
   writes.list[0]->aio_nbytes = (bs0 - s) * c;
@@ -445,8 +546,8 @@ read_header(const char *filename)
     } else if(strncasecmp(line, "KmaAll", 6) == 0) {
       rv.dims[2] = parse_uint(line+7);
     } else if(strncasecmp(line, "nF", 2) == 0) {
-      rv.nfields = parse_uint(line+3);
-      rv.flds = calloc(sizeof(struct field), rv.nfields);
+      nfields = parse_uint(line+3);
+      flds = calloc(sizeof(struct field), nfields);
     } else if(strncasecmp(line, "dimsI", 5) == 0) {
       rv.nbricks[0]= parse_uint(line+6);
     } else if(strncasecmp(line, "dimsJ", 5) == 0) {
@@ -454,7 +555,7 @@ read_header(const char *filename)
     } else if(strncasecmp(line, "dimsK", 5) == 0) {
       rv.nbricks[2]= parse_uint(line+6);
     } else if(strncasecmp(line, "FieldNames", 10) == 0) {
-      for(size_t i=0; i < rv.nfields; ++i) {
+      for(size_t i=0; i < nfields; ++i) {
         errno = 0;
         free(line); line = NULL;
         bytes = getline(&line, &llen, fp);
@@ -462,13 +563,12 @@ read_header(const char *filename)
           ERR(netz, "error while processing fields; is nF wrong?!");
           exit(EXIT_FAILURE);
         }
-        rv.flds[field].name = strdup(strip(&line));
-        remove_underscores(rv.flds[field].name);
+        flds[field].name = strdup(strip(&line));
+        remove_underscores(flds[field].name);
         const size_t fldsize = rv.dims[0]*rv.dims[1]*rv.dims[2]*sizeof(float);
-        rv.flds[field].lower = fldsize * field;
-        rv.flds[field].upper = rv.flds[field].lower + fldsize;
-        rv.flds[field].out3d = false;
-        rv.flds[field].slice = 0;
+        flds[field].lower = fldsize * field;
+        flds[field].upper = flds[field].lower + fldsize;
+        flds[field].out3d = false;
         field++;
       }
     }
@@ -478,22 +578,12 @@ read_header(const char *filename)
   return rv;
 }
 
-static void
-free_header(struct header* head)
-{
-  for(size_t i=0; i < head->nfields; ++i) {
-    free(head->flds[i].name);
-    head->flds[i].name = NULL;
-  }
-  free(head->flds);
-  head->flds = NULL;
-  head->nfields = 0;
-}
-
 __attribute__((destructor)) static void
 cleanup()
 {
   free_header(&hdr);
+  free_fields();
+  free_slices();
 }
 
 /* which bytes intersect with the ones we want to write?
@@ -596,7 +686,6 @@ writes2d(size_t offset, const void* buf, size_t nbytes, int to,
          const struct header h)
 {
   assert(to >= 0); /* can a descriptor be 0?  probably not, but... */
-  TRACE(netz, "2d decomposition of %zu bytes.", nbytes);
   const size_t voxels[3] = { /* total # of voxels for whole output file */
     h.nbricks[0] * h.dims[0],
     h.nbricks[1] * h.dims[1],
@@ -609,7 +698,9 @@ writes2d(size_t offset, const void* buf, size_t nbytes, int to,
   to3d(rank(), nbricks, bpos);
 
   struct writelist wl = wlist2d(voxels, offset, buf, nbytes, bpos, h.dims[0]);
+#if 0
   TRACE(netz, "writelist with %zu elements, merging into %d", wl.n, to);
+#endif
   for(size_t i=0; i < wl.n; ++i) {
     wl.list[i]->aio_fildes = to;
     wl.list[i]->aio_sigevent.sigev_notify = SIGEV_NONE;
@@ -617,15 +708,53 @@ writes2d(size_t offset, const void* buf, size_t nbytes, int to,
   }
   errno = 0;
   if(lio_listio(LIO_WAIT, wl.list, wl.n, NULL) == -1) {
-    WARN(netz, "listio failed: %d", errno);
-      for(size_t i=0; i < wl.n; ++i) {
+    WARN(netz, "listio2d failed: %d", errno);
+    for(size_t i=0; i < wl.n; ++i) {
+      errno = 0;
       const ssize_t bytes = aio_return(wl.list[i]);
       if(bytes <= 0) {
-        ERR(netz, "write %zu failed: %d, %d", i, (int)bytes, errno);
+        ERR(netz, "write %zu failed: %d, %d", i, (int)bytes,
+            aio_error(wl.list[i]));
+        TRACE(netz, "failed write is %zu: %p--%p to offset %zu",
+              i, wl.list[i]->aio_buf,
+              wl.list[i]->aio_buf+wl.list[i]->aio_nbytes,
+              wl.list[i]->aio_offset);
+        assert(false);
       }
     }
   }
   free_writelist(wl);
+}
+
+static void
+slice_outputs(const size_t low, const void* buf, const size_t n,
+              const size_t dims[3])
+{
+  if(nslices == 0) {
+    return;
+  }
+  for(size_t i=0; i < nfields; ++i) {
+    size_t skip, nbytes;
+    for(size_t slice=0; slice < nslices; ++slice) {
+      const struct slice slinfo = slices[slice];
+      if(byteintersect2d(low,low+n, flds[i].lower,flds[i].upper,
+                         dims, slinfo.idx, &skip,&nbytes)) {
+        assert(nbytes <= n);
+        assert(skip < n);
+        const size_t idx = i*nslices + slice;
+        assert(slicefield[idx] != -1);
+
+        const char* pwrt = ((const char*)buf) + skip;
+        /* we don't want the raw file offset.  rather we want the offset in the
+         * stream the user asked for.  that is the current offset sans the offset
+         * of the current field, sans the offset of the slice. */
+        const size_t slc_offset = (slinfo.idx)*hdr.dims[1]*hdr.dims[0] *
+                                  sizeof(float);
+        const size_t strm_offset = low+skip - flds[i].lower - slc_offset;
+        writes2d(strm_offset, pwrt, nbytes, slicefield[idx], hdr);
+      }
+    }
+  }
 }
 
 void
@@ -639,10 +768,10 @@ exec(const char* fn, const void* buf, size_t n)
     tjfstart();
   }
   assert(binfield != NULL);
-  for(size_t i=0; i < hdr.nfields; ++i) {
+  for(size_t i=0; i < nfields; ++i) {
     size_t skip, nbytes;
-    if(hdr.flds[i].out3d &&
-       byteintersect(offset, offset+n, hdr.flds[i].lower, hdr.flds[i].upper,
+    if(flds[i].out3d &&
+       byteintersect(offset, offset+n, flds[i].lower, flds[i].upper,
                      &skip, &nbytes)) {
       assert(nbytes <= n);
       assert(skip < n);
@@ -655,22 +784,8 @@ exec(const char* fn, const void* buf, size_t n)
       }
       assert(!ferror(binfield[i]));
     }
-    if(hdr.flds[i].slice &&
-       byteintersect2d(offset,offset+n, hdr.flds[i].lower,hdr.flds[i].upper,
-                       hdr.dims, hdr.flds[i].slice-1, &skip,&nbytes)) {
-      assert(nbytes <= n);
-      assert(skip < n);
-      assert(slicefield[i]);
-      const char* pwrt = ((const char*)buf) + skip;
-      /* we don't want the raw file offset.  rather we want the offset in the
-       * stream the user asked for.  that is the current offset sans the offset
-       * of the current field, sans the offset of the slice. */
-      const size_t slc_offset = (hdr.flds[i].slice-1)*hdr.dims[1]*hdr.dims[0] *
-                                sizeof(float);
-      const size_t strm_offset = offset+skip - hdr.flds[i].lower - slc_offset;
-      writes2d(strm_offset, pwrt, nbytes, slicefield[i], hdr);
-    }
   }
+  slice_outputs(offset, buf, n, hdr.dims);
   offset += n;
 }
 
@@ -680,10 +795,10 @@ exec(const char* fn, const void* buf, size_t n)
 static void
 out3d()
 {
-  for(size_t i=0; i < hdr.nfields; ++i) {
+  for(size_t i=0; i < nfields; ++i) {
     if(binfield[i]) {
       if(fclose(binfield[i]) != 0) {
-        ERR(netz, "error closing field %s: %d", hdr.flds[i].name, errno);
+        ERR(netz, "error closing field %s: %d", flds[i].name, errno);
       }
       /* now each of our N processes has written a file which contains a
        * single brick. let's merge all those bricks into a single file. */
@@ -698,13 +813,13 @@ out3d()
             bpos[0], bpos[1], bpos[2]);
       struct writelist wl = find_destination(bpos, voxels, hdr.dims);
       char fname[256];
-      snprintf(fname, 256, "%s.%zu", hdr.flds[i].name, rank());
+      snprintf(fname, 256, "%s.%zu", flds[i].name, rank());
       TRACE(netz, "got writelist with %zu elements. merging %s into %s",
-            wl.n, fname, hdr.flds[i].name);
-      apply_writelist(wl, hdr.dims, hdr.flds[i].name, fname);
+            wl.n, fname, flds[i].name);
+      apply_writelist(wl, hdr.dims, flds[i].name, fname);
       free_writelist(wl);
       if(rank() == 0) {
-        create_nhdr(hdr.flds[i].name, voxels);
+        create_nhdr(flds[i].name, voxels);
       }
     }
   }
@@ -715,8 +830,9 @@ finish(const char* fn)
 {
   offset = 0; /* reset our current offset. */
   if(fnmatch("*header*", fn, 0) == 0) {
-    free_header(&hdr);
-    hdr = read_header(fn);
+    assert(binfield == NULL);
+    assert(slicefield == NULL);
+    if(rank() == 0) { hdr = read_header(fn); }
     return;
   }
   if(binfield) {
@@ -725,10 +841,13 @@ finish(const char* fn)
     binfield = NULL;
   }
   if(slicefield) {
-    for(size_t i=0; i < hdr.nfields; ++i) {
-      if(slicefield[i] != -1) {
-        if(close(slicefield[i]) != 0) {
-          ERR(netz, "error writing slicefield %zu: %d", i, errno);
+    for(size_t i=0; i < nfields; ++i) {
+      for(size_t slice=0; slice < nslices; ++slice) {
+        const size_t idx = i*nslices + slice;
+        if(slicefield[idx] != -1) {
+          if(close(slicefield[idx]) != 0) {
+            ERR(netz, "error writing slicefield %zu: %d", idx, errno);
+          }
         }
       }
     }

@@ -1,10 +1,11 @@
 MPICC=mpicc
 WARN=-Wall -Wextra
-CFLAGS=-std=c99 -fPIC $(WARN) -ggdb
+DBG:=-ggdb -fno-omit-frame-pointer
+CFLAGS=-std=c99 -fPIC $(WARN) $(DBG)
 FC=gfortran
 FFLAGS=$(WARN) -fPIC -ggdb
 # humorously, dlsym() actually violates the standard
-CFLAGS_ORIDE=-std=c99 -ggdb -fPIC -Wall -Wextra
+CFLAGS_ORIDE=-std=c99 -ggdb -fPIC -Wall -Wextra $(DBG)
 LDFLAGS=-Wl,--no-allow-shlib-undefined -Wl,--no-undefined
 LDFLAGS:=-Wl,--no-undefined
 LDLIBS=-ldl -lrt
