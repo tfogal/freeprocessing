@@ -176,10 +176,10 @@ parse_sliceinfo(FILE* fp, size_t* n)
     return NULL;
   }
   struct slice* retval = NULL;
-  char axis = '\0';
+  char axis[8] = {'\0'};
   size_t slicenum = 0;
   size_t seen = 0;
-  while((m = fscanf(fp, "%*[ \n\t]%[xyz] = %zu", &axis, &slicenum)) >= 1) {
+  while((m = fscanf(fp, "%*[ \n\t]%[xyz] = %zu", axis, &slicenum)) >= 1) {
     ++seen;
     void* mem = realloc(retval, sizeof(struct slice)*seen);
     if(mem == NULL) {
@@ -188,13 +188,13 @@ parse_sliceinfo(FILE* fp, size_t* n)
       return NULL;
     }
     retval = mem;
-    switch(axis) {
+    switch(axis[0]) {
       case 'x': retval[seen-1].axis = X; break;
       case 'y': retval[seen-1].axis = Y; break;
       case 'z': retval[seen-1].axis = Z; break;
       default:
         assert(false && "charmatch in fscanf ensures this can't happen.");
-        ERR(netz, "unknown axis '%c'!", axis);
+        ERR(netz, "unknown axis '%c'!", axis[0]);
     }
     retval[seen-1].idx = slicenum;
   }
