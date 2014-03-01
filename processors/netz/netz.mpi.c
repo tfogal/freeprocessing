@@ -469,7 +469,7 @@ slurp(const char* fn, size_t n)
   }
   const size_t bytes = fread(buf, 1, n, fp);
   if(bytes != n) {
-    WARN(netz, "short read (%zu bytes) slurping %s: %d", bytes, fn, errno);
+    WARN(netz, "short read (%zu bytes) slurping %s: %d", bytes, fn, (int)errno);
   }
   fclose(fp);
   return buf;
@@ -482,7 +482,7 @@ apply_writelist(struct writelist wl, const size_t bsize[3],
   const int fd = open(to, O_WRONLY | O_TRUNC | O_CLOEXEC | O_CREAT,
                       S_IWUSR | S_IRUSR | S_IRGRP);
   if(fd == -1) {
-    ERR(netz, "open error on %s: %d.  giving up.", to, errno);
+    ERR(netz, "open error on %s: %d.  giving up.", to, (int)errno);
     return;
   }
   char* data = slurp(from, bsize[2]*bsize[1]*bsize[0]*sizeof(float));
@@ -494,7 +494,7 @@ apply_writelist(struct writelist wl, const size_t bsize[3],
   /* do we need a barrier here?  is it possible for process 0 to get to this
    * unlink before process 1 finishes the open? */
   if(unlink(from) != 0) {
-    WARN(netz, "could not remove brick '%s': %d", from, errno);
+    WARN(netz, "could not remove brick '%s': %d", from, (int)errno);
   }
   for(size_t i=0; i < wl.n; ++i) {
     assert(wl.list[i]);
@@ -502,7 +502,7 @@ apply_writelist(struct writelist wl, const size_t bsize[3],
     wl.list[i]->aio_buf = data + wl.srcoffset[i];
   }
   if(lio_listio(LIO_WAIT, wl.list, wl.n, NULL) == -1) {
-    WARN(netz, "listio failed: %d", errno);
+    WARN(netz, "listio failed: %d", (int)errno);
   }
   free(data);
   close(fd);
@@ -516,7 +516,7 @@ read_header(const char *filename)
   FILE* fp = fopen(filename, "r");
   if(!fp) {
     ERR(netz, "[%zu] error reading header file %s: %d", rank(), filename,
-        errno);
+        (int)errno);
     return rv;
   }
   char* line;
@@ -529,7 +529,7 @@ read_header(const char *filename)
     errno = 0;
     bytes = getline(&line, &llen, fp);
     if(bytes == -1 && errno != 0) {
-      ERR(netz, "getline error: %d", errno);
+      ERR(netz, "getline error: %d", (int)errno);
       free(line);
       break;
     } else if(bytes == -1) {
@@ -671,7 +671,7 @@ create_nhdr(const char* rawfn, const size_t voxels[3])
     "spacings: 1 1 1\n"
     "data file: %s\n", voxels[0], voxels[1], voxels[2], rawfn);
   if(m < 4) {
-    WARN(netz, "conversion error creating nhdr for %s: %d", rawfn, errno);
+    WARN(netz, "conversion error creating nhdr for %s: %d", rawfn, (int)errno);
   }
   if(fclose(fp) != 0) {
     ERR(netz, "error creating .nhdr for %s", rawfn);
@@ -708,7 +708,7 @@ writes2d(size_t offset, const void* buf, size_t nbytes, int to,
   }
   errno = 0;
   if(lio_listio(LIO_WAIT, wl.list, wl.n, NULL) == -1) {
-    WARN(netz, "listio2d failed: %d", errno);
+    WARN(netz, "listio2d failed: %d", (int)errno);
     for(size_t i=0; i < wl.n; ++i) {
       errno = 0;
       const ssize_t bytes = aio_return(wl.list[i]);
@@ -779,7 +779,7 @@ exec(const char* fn, const void* buf, size_t n)
       errno = 0;
       const size_t written = fwrite(pwrt, 1, nbytes, binfield[i]);
       if(written != nbytes) {
-        WARN(netz, "short write (%zu of %zu). errno=%d", written, n, errno);
+        WARN(netz, "short write (%zu of %zu). errno=%d", written, n,(int)errno);
         assert(0);
       }
       assert(!ferror(binfield[i]));
@@ -798,7 +798,7 @@ out3d()
   for(size_t i=0; i < nfields; ++i) {
     if(binfield[i]) {
       if(fclose(binfield[i]) != 0) {
-        ERR(netz, "error closing field %s: %d", flds[i].name, errno);
+        ERR(netz, "error closing field %s: %d", flds[i].name, (int)errno);
       }
       /* now each of our N processes has written a file which contains a
        * single brick. let's merge all those bricks into a single file. */
@@ -846,7 +846,7 @@ finish(const char* fn)
         const size_t idx = i*nslices + slice;
         if(slicefield[idx] != -1) {
           if(close(slicefield[idx]) != 0) {
-            ERR(netz, "error writing slicefield %zu: %d", idx, errno);
+            ERR(netz, "error writing slicefield %zu: %d", idx, (int)errno);
           }
         }
       }
