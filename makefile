@@ -11,13 +11,13 @@ LDFLAGS:=-Wl,--no-undefined
 LDLIBS=-ldl -lrt
 obj=evfork.o forkenv.o override.o csv.o simplesitu.o vis.o parenv.mpi.o \
   runner.mpi.o setenv.mpi.o open.mpi.o debug.o \
-  writebin.mpi.o parallel.mpi.o modified.o \
-  testmodified.o enzo.mpi.o echo.mpi.o nek5k.mpi.o png.o \
+  writebin.mpi.o parallel.mpi.o \
+  enzo.mpi.o echo.mpi.o nek5k.mpi.o png.o \
   fproc.o posix.o h5.o
 
 all: $(obj) libfp.so libsitu.so writecsv mpiwrapper envpar mpienv situ \
   mpifopen libecho.so libmpitee.so \
-  modtest libenzo.so libnek.so
+  libenzo.so libnek.so
 
 analyze: $(obj)
 	clang --analyze $(shell mpicc -showme:compile) -I/usr/include/python2.7 *.c
