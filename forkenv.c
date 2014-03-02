@@ -13,8 +13,9 @@ main(int argc, char* argv[])
   assert(argc > 0);
   char* subv[argc]; memset(subv, 0, sizeof(char*)*argc);
   rebuild_args((size_t)argc, argv, subv);
-  if(setenv("MEANING_OF_LIFE", "42", 1) != 0) {
-    fprintf(stderr, "failed setting env var.\n");
+  if(setenv("LD_PRELOAD", "./libsitu.so", 1) != 0) {
+    fprintf(stderr, "failed setting 'LD_PRELOAD' env var.\n");
+    exit(EXIT_FAILURE);
   }
   launch(subv);
 }
