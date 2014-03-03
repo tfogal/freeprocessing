@@ -31,16 +31,19 @@ if mass is not None:
   output.GetPointData().AddArray(massNorm);
 """
 
+#                  default=[-2000.0, 100.0, 70000],
+#                  default=[-4000.246, 600.739, -523.349],
+#                  default=[0.0, 1.0, 0.0],
 args = argparse.ArgumentParser(description='control nbody visualization.')
 args.add_argument("-f", "--filename", type=str, help="filename to read")
 args.add_argument("-g", "--debug", action="store_const", const=1,
                   help="enable debugging")
 args.add_argument("--axes", action="store_const", const=1, help="axes")
 args.add_argument("--eye", nargs=3, type=float,
-                  default=[-2000.0, 100.0, 70000],
+                  default=[0.0, 0.0, 300.0],
                   help="location of the camera")
 args.add_argument("--ref", nargs=3, type=float,
-                  default=[-4000.246, 600.739, -523.349],
+                  default=[0.5, 0.5, 0.8],
                   help="location the camera focuses on")
 args.add_argument("--vup", nargs=3, type=float,
                   default=[0.0, 1.0, 0.0],
