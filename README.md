@@ -131,6 +131,7 @@ The currently defined channels are:
   counterparts.
   * `freeproc`: loading and using libraries
   * `writes`: all `write`-esque calls. (*CAUTION*: spammy)
+  * `posix`: trace POSIX I/O calls.
   * `hdf5`: HDF5 calls of interest.
 
 The currently defined classes are:
