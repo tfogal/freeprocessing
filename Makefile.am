@@ -7,8 +7,6 @@ libsitu_la_SOURCES = \
   posix.c \
   simplesitu.c
 libsitu_la_LIBADD = -ldl -lrt @LTLIBOBJS@
-# fixme don't hack in gnu-specific option for c99 mode.
-libsitu_la_CFLAGS = -std=c99
 
 # for dlopen libs:
 # pkglib_LTLIBRARIES = ...
