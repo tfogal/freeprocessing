@@ -1,10 +1,10 @@
 ACLOCAL_AMFLAGS = -I m4
 LIB_LTLIBRARIES = libsitu.la
 libsitu_la_SOURCES = \
-  debug.o \
-  fproc.o \
-  h5.o \
-  posix.o \
+  debug.c \
+  fproc.c \
+  h5.c \
+  posix.c \
   simplesitu.c
 libsitu_la_LIBADD = -ldl -lrt @LTLIBOBJS@
 # fixme don't hack in gnu-specific option for c99 mode.
