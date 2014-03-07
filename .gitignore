@@ -16,3 +16,16 @@ libenzo.so
 libnek.so
 libtopython.so
 perf.data
+
+Makefile.in
+Makefile
+aclocal.m4
+autom4te.cache
+config.*
+configure
+install-sh
+libtool
+ltmain.sh
+missing
+.dirstamp
+stamp-h1
