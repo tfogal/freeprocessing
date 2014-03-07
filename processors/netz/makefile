@@ -26,5 +26,8 @@ hacktest: ctest.mpi.o ../../debug.o netz.mpi.o ../../parallel.mpi.o
 %.mpi.o: %.mpi.c
 	$(MPICC) -c $(CFLAGS) $< -o $@
 
+%.mpi.o: %.mpic
+	$(MPICC) -x c -c $(CFLAGS) $< -o $@
+
 clean:
 	rm -f $(obj) libnetz.so hacktest
