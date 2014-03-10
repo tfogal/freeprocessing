@@ -1,5 +1,5 @@
 AC_INIT([freeprocessing], [0.9])
-AC_PREREQ([2.69])
+AC_PREREQ([2.68])
 AC_CONFIG_SRCDIR([simplesitu.c])
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_MACRO_DIR([m4])
