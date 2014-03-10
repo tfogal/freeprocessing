@@ -85,6 +85,8 @@ name_class(const char* name)
 void
 symb_parse_options(struct symbdbgchannel* ch, const char* opt)
 {
+  _Static_assert(sizeof(enum SymbiontChanClass) <= sizeof(unsigned),
+                 "to make sure we can't shift beyond flags");
   /* outer loop iterates over channels.  channel names are separated by ';' */
   for(const char* chan=opt; chan && chan!=(const char*)0x1;
       chan=strchr(chan, ';')+1) {
@@ -102,8 +104,6 @@ symb_parse_options(struct symbdbgchannel* ch, const char* opt)
           olist = strchr(olist, ',')+1) {
         /* the "+1" gets rid of the minus or plus */
         enum SymbiontChanClass cls = name_class(olist+1);
-        /* we'll use this to shift; make sure it can fit in the shift. */
-        assert(cls < sizeof(unsigned));
         /* temporarily null out the subsequent options, for printing. */
         char* optend = strchr(olist, ',');
         if(optend) { *optend = '\0'; }
