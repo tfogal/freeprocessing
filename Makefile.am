@@ -17,6 +17,9 @@ libsitu_la_SOURCES = \
   simplesitu.c
 libsitu_la_LIBADD = -ldl -lrt @LTLIBOBJS@
 
+bin_PROGRAMS = situ
+situ_SOURCES = forkenv.c evfork.c
+
 # set it to an empty value, because automake complains if one tries to '+=' on
 # a variable which wasn't yet defined.
 pkglib_LTLIBRARIES =
