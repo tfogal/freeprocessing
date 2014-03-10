@@ -1,0 +1,14 @@
+language: c
+compiler:
+  - gcc
+  - clang
+before_install:
+  - sudo apt-get -y install mpi-default-dev gfortran python-numpy cppcheck
+script:
+  - autoreconf -vi
+  - ./configure
+  - make -f Makefile all-am
+  - cppcheck --quiet *.c
+  - cppcheck --quiet *.c
+  - cppcheck --quiet processors/isosurf/*.c processors/netz/*.c \
+                     processors/python/*.c
