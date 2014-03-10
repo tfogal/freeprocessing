@@ -21,6 +21,8 @@ libtopython.so: ../../debug.o ../../parallel.mpi.o tonumpy.mpi.o
 
 %.mpi.o: %.mpi.c
 	$(MPICC) -c $(CFLAGS) $< -o $@
+%.mpi.o: %.mpic
+	$(MPICC) -x c -c $(CFLAGS) $< -o $@
 
 clean:
 	rm -f $(obj) libtopython.so

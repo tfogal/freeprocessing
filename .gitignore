@@ -29,3 +29,5 @@ ltmain.sh
 missing
 .dirstamp
 stamp-h1
+*.lo
+*.la
