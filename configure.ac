@@ -33,8 +33,7 @@ AC_CONFIG_FILES([Makefile])
 
 dnl Why do I have to do this?!  libtool breaks horrifically without this, since
 dnl it tries to add an rpath of ${LIBdir} and the variable isn't set.
-LIBdir=$(realpath .)
-LIBdir="${LIBdir}/${objdir}"
+LIBdir=$(readlink -f ${objdir})
 
 AC_SUBST([LIBDIR])
 AC_SUBST([LIBdir])
