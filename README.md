@@ -99,6 +99,10 @@ character:
 
   mpiexec -env LD_PRELOAD ./libsitu.so -np 4 ./myprogram
 
+BlueGene's are even more unique:
+
+  runjob --envs LD_PRELOAD=./libsitu.so --exe ./myprogram
+
 Debug Channel Settings
 ======================
 
