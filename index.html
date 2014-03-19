@@ -1,0 +1,208 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <title>Freeprocessing by tfogal</title>
+
+    <link rel="stylesheet" href="stylesheets/styles.css">
+    <link rel="stylesheet" href="stylesheets/pygment_trac.css">
+    <script src="javascripts/scale.fix.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+
+    <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+  </head>
+  <body>
+    <div class="wrapper">
+      <header>
+        <h1>Freeprocessing</h1>
+        <p>in situ visualization tool</p>
+        <p class="view"><a href="https://github.com/tfogal/freeprocessing">View the Project on GitHub <small>tfogal/freeprocessing</small></a></p>
+        <ul>
+          <li><a href="https://github.com/tfogal/freeprocessing/zipball/master">Download <strong>ZIP File</strong></a></li>
+          <li><a href="https://github.com/tfogal/freeprocessing/tarball/master">Download <strong>TAR Ball</strong></a></li>
+          <li><a href="https://github.com/tfogal/freeprocessing">View On <strong>GitHub</strong></a></li>
+        </ul>
+      </header>
+      <section>
+        <p>This is a data transfer symbiont.  It is essentially 'tee' in library form.</p>
+
+<p>To use it, <code>LD_PRELOAD</code> the library (<code>libsitu.so</code>) into your program.  At that
+point, it looks for all of your <code>write</code> calls and does its magic.</p>
+
+<h1>
+<a name="configuration" class="anchor" href="#configuration"><span class="octicon octicon-link"></span></a>Configuration</h1>
+
+<p>The library looks for a library named <code>situ.cfg</code>.  This library defines
+what libraries should be loaded.  The general format is basically like
+awk, except that instead of specifying the code to run, you specify a
+library that implements that code:</p>
+
+<p>pattern { exec: /path/to/library.so }</p>
+
+<p>Where <code>pattern</code> is a shell glob and <code>library.so</code> is a library
+implementing a pre-prescribed interface (see <code>LIBRARIES</code>).  An example:</p>
+
+<pre><code>  *header* { exec: ./libmine.so }
+  *.data { exec: ./libmine.so }
+  *tosend* { exec: ./libinstr.so }
+</code></pre>
+
+<p>This defines three processing elements, <code>libmine</code> will be used whenever
+a filename which matches <code>*header*</code> or <code>*.data</code> is accessed.  <em>Both</em>
+instances get called.  The order they are called is undefined.</p>
+
+<h2>
+<a name="sharing-internal-memory" class="anchor" href="#sharing-internal-memory"><span class="octicon octicon-link"></span></a>Sharing internal memory</h2>
+
+<p>If a single library is given in multiple patterns, the matches <em>share</em>
+private variable instances.  In the above example, both <code>libmine.so</code>
+instances will access a single set of shared variables.  This allows
+you to (for instance) parse the program's header output and communicate
+such information to the part of the code which instruments the binary
+outputs.</p>
+
+<p>If you actually want two instances of a library, with unique internal
+variables each time, just rename one of them.  The equivalency is
+based purely on the name of the libraries, so libraries of different
+names---even if they are the exact sample implementation---will not
+share private data.</p>
+
+<h1>
+<a name="libraries" class="anchor" href="#libraries"><span class="octicon octicon-link"></span></a>Libraries</h1>
+
+<p>Libraries need only export one function:</p>
+
+<ol>
+<li><code>void exec(const char* fn, const void* buf, size_t n)</code></li>
+</ol><p>It is called anytime a file is written to.  The filename given in the
+first argument is the exact filename (not, for example, the pattern
+given in the configuration file).</p>
+
+<p>The symbiont attempts to take care of the issue of partial writes;
+there should be a 1-1 mapping between program <code>write</code>s and <code>exec</code>
+invocations.</p>
+
+<p>Libraries can optionally implement two additional functions:</p>
+
+<ol>
+<li>
+<code>void metadata(const char* fn, const size_t dims[3], int)</code>, and</li>
+<li><code>void finish(const char* fn)</code></li>
+</ol><p><code>metadata</code> is called directly before <code>exec</code>, in the case that the
+simulation knows metadata for the impending <code>write</code>.  This is only
+possible with some self-describing transport mechanisms.  If your code
+does not utilize IO middleware, this function will never be called.
+In this case, you have to provide any needed metadata yourself.  We
+recommend parsing a config file the first time <code>exec</code> is called.</p>
+
+<p><code>finish</code> notifies you when the program is finished with a file or
+pattern.  Good time to clean up resources.</p>
+
+<h1>
+<a name="environment" class="anchor" href="#environment"><span class="octicon octicon-link"></span></a>Environment</h1>
+
+<ul>
+<li>
+<code>LIBSITU_DEBUG</code>: used to selectively enable debug information.  See
+below for more info.</li>
+</ul><h2>
+<a name="forking" class="anchor" href="#forking"><span class="octicon octicon-link"></span></a>Forking</h2>
+
+<p>There can be issues forking processes.  This includes using <code>system</code>.
+Therefore, the library unsets <code>LD_PRELOAD</code> during initialization, so
+that it will not instrument any child processes.</p>
+
+<p>For the most part, this is what you want.  However, this may cause
+problems if you have a complicated loading procedure ("mpirun" and
+"valgrind" come to mind).  To get the code to run under MPI, you want
+the <code>mpirun</code> program to set the environment variable for you, instead
+of setting it before <code>mpirun</code> is invoked.  OpenMPI's <code>mpirun</code>s let you
+do this with <code>-x</code>, e.g.:</p>
+
+<p>mpirun -x LD_PRELOAD=./libsitu.so -np 4 ./myprogram</p>
+
+<p>For MPICH, this option is <code>-env</code> and the setting should lack the <code>=</code>
+character:</p>
+
+<p>mpiexec -env LD_PRELOAD ./libsitu.so -np 4 ./myprogram</p>
+
+<p>BlueGene's are even more unique:</p>
+
+<p>runjob --envs LD_PRELOAD=./libsitu.so --exe ./myprogram</p>
+
+<h1>
+<a name="debug-channel-settings" class="anchor" href="#debug-channel-settings"><span class="octicon octicon-link"></span></a>Debug Channel Settings</h1>
+
+<p>The symbiont has a set of unique debug channels.  Generally these are
+all related to a specific feature, such as investigating when files are
+opened, or when data is transferred, or other information.</p>
+
+<p>In addition, each channel has a set of *class*es, which might loosely
+be thought of as severity.  So you can, for example, turn on only the
+warnings from a particular channel, or only the errors.</p>
+
+<p>The way one configures these channels is through the
+<code>LIBSITU_DEBUG</code> environment variable.  The general form is <code>channel
+name=[+-]class[,...]</code>, e.g.:</p>
+
+<p>opens=+warn</p>
+
+<p>which says to enable warnings on the channel <code>opens</code>.  Multiple class
+specifications are separated by commas:</p>
+
+<p>opens=+trace,-warn</p>
+
+<p>Multiple channels are delimited by semicolons:</p>
+
+<p>opens=+trace,-warn;writes=+trace</p>
+
+<p>The currently defined channels are:</p>
+
+<ul>
+<li>
+<code>opens</code>: all <code>open</code>-esque calls, along with their <code>close</code>
+counterparts.</li>
+<li>
+<code>freeproc</code>: loading and using libraries</li>
+<li>
+<code>writes</code>: all <code>write</code>-esque calls. (<em>CAUTION</em>: spammy)</li>
+<li>
+<code>posix</code>: trace POSIX I/O calls.</li>
+<li>
+<code>hdf5</code>: HDF5 calls of interest.</li>
+</ul><p>The currently defined classes are:</p>
+
+<ul>
+<li>
+<code>err</code>: errors which almost certainly indicate a bug in either the
+symbiont or the host program.</li>
+<li>
+<code>warn</code>: generally anomalous conditions which might not be a
+problem, such as an internal table filling up.</li>
+<li>
+<code>trace</code>: notification <em>when</em> a call occurs, in a manner similar to
+<code>strace(1)</code> or <code>ltrace(1)</code>.</li>
+</ul><h1>
+<a name="notes" class="anchor" href="#notes"><span class="octicon octicon-link"></span></a>Notes</h1>
+
+<p>It seems that the executable needs to be built as position-independent
+code for this to work.</p>
+
+<p>if the code is not position-independent, then
+<code>__attribute__((constructor))</code> functions do not get run and thus our
+function pointers never get initialized.</p>
+
+<p>Fortran may work a bit differently, doesn't seem required there.</p>
+      </section>
+    </div>
+    <footer>
+      <p>Project maintained by <a href="https://github.com/tfogal">tfogal</a></p>
+      <p>Hosted on GitHub Pages &mdash; Theme by <a href="https://github.com/orderedlist">orderedlist</a></p>
+    </footer>
+    <!--[if !IE]><script>fixScale(document);</script><![endif]-->
+    
+  </body>
+</html>
