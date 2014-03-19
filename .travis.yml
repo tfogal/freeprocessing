@@ -6,7 +6,7 @@ before_install:
   - sudo apt-get -y install mpi-default-dev gfortran python-numpy cppcheck
 script:
   - autoreconf -vi
-  - ./configure
+  - ./configure --enable-python
   - make -f Makefile all-am
   - cppcheck --quiet *.c
   - cppcheck --quiet *.c
