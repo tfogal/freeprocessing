@@ -19,7 +19,6 @@ body {
 }
 
 .wrapper {
-  width: 640px;
   margin: 0 auto;
   background: #DEDEDE;
   -webkit-border-radius: 8px;
@@ -71,7 +70,7 @@ header {
 header h1 {
   margin: 0;
   padding: 0;
-  font-size: 24px;
+  /* font-size: 24px; */
   line-height: 1.2;
   color: #069;
   text-shadow: rgba(255, 255, 255, 0.9) 0 1px 0;
@@ -82,8 +81,7 @@ header.without-description h1 {
 header p {
   margin: 0;
   color: #61778B;
-  width: 300px;
-  font-size: 13px;
+  /* font-size: 13px; */
 }
 header p.view {
   display: none;
@@ -157,7 +155,7 @@ header ul li + li + li {
 }
 header ul a {
   line-height: 1;
-  font-size: 11px;
+  /* font-size: 11px; */
   color: #fff;
   color: rgba(255, 255, 255, 0.8);
   display: block;
@@ -168,7 +166,7 @@ header ul a {
   text-shadow: rgba(0, 0, 0, 0.4) 0 -1px 0;
 }
 header ul a strong {
-  font-size: 14px;
+  /* font-size: 14px; */
   display: block;
   color: #fff;
   -webkit-font-smoothing: antialiased;
@@ -176,7 +174,7 @@ header ul a strong {
 
 section {
   padding: 15px 20px;
-  font-size: 15px;
+  /* font-size: 15px; */
   border-top: 1px solid #fff;
   background: -webkit-gradient(linear, 50% 0%, 50% 700, color-stop(0%, #fafafa), color-stop(100%, #dedede));
   background: -webkit-linear-gradient(#fafafa, #dedede 700px);
@@ -208,7 +206,7 @@ h1, h2, h3 {
 }
 
 h1 {
-  font-size: 28px;
+  /* font-size: 28px; */
 }
 
 h2 {
@@ -235,7 +233,7 @@ img {
 code, pre {
   font-family: Monaco, Bitstream Vera Sans Mono, Lucida Console, Terminal;
   color: #333;
-  font-size: 12px;
+  /* font-size: 12px; */
   overflow-x: auto;
 }
 
@@ -274,7 +272,7 @@ th {
 }
 
 small {
-  font-size: 11px;
+  /* font-size: 11px; */
 }
 
 hr {
