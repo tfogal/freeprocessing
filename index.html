@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="chrome=1">
-    <title>Freeprocessing by tfogal</title>
+    <title>Freeprocessing</title>
 
     <link rel="stylesheet" href="stylesheets/styles.css">
     <link rel="stylesheet" href="stylesheets/pygment_trac.css">
@@ -16,7 +16,7 @@
   <body>
     <div class="wrapper">
       <header>
-        <h1>Freeprocessing</h1>
+        <h1><i>Free</i>processing</h1>
         <p>in situ visualization tool</p>
         <p class="view"><a href="https://github.com/tfogal/freeprocessing">View the Project on GitHub <small>tfogal/freeprocessing</small></a></p>
         <ul>
@@ -39,14 +39,14 @@ what libraries should be loaded.  The general format is basically like
 awk, except that instead of specifying the code to run, you specify a
 library that implements that code:</p>
 
-<p>pattern { exec: /path/to/library.so }</p>
+<p><code>pattern { exec: /path/to/library.so }</code></p>
 
 <p>Where <code>pattern</code> is a shell glob and <code>library.so</code> is a library
 implementing a pre-prescribed interface (see <code>LIBRARIES</code>).  An example:</p>
 
-<pre><code>  *header* { exec: ./libmine.so }
-  *.data { exec: ./libmine.so }
-  *tosend* { exec: ./libinstr.so }
+<pre><code>*header* { exec: ./libmine.so }
+*.data { exec: ./libmine.so }
+*tosend* { exec: ./libinstr.so }
 </code></pre>
 
 <p>This defines three processing elements, <code>libmine</code> will be used whenever
