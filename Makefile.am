@@ -30,5 +30,6 @@ situ_SOURCES = forkenv.c evfork.c
 # a variable which wasn't yet defined.
 pkglib_LTLIBRARIES =
 
+include processors/hello/mk.inc
 include processors/netz/mk.inc
 include processors/python/mk.inc
