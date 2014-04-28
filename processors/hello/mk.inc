@@ -6,4 +6,4 @@ libhello_la_LIBADD = -lrt @LTLIBOBJS@
 libhello_la_CFLAGS = -I./
 
 bin_PROGRAMS += hw
-hw_SOURCES = $(top_srcdir)/processors/output-int.c
+hw_SOURCES = $(top_srcdir)/processors/hello/output-int.c
