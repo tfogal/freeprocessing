@@ -1,0 +1,155 @@
+// a2x: --dblatex-opts "-P latex.output.revhistory=0"
+// a2x: --dblatex-opts "-P doc.publisher.show=0"
+// a2x: --dblatex-opts "-P iconsdir=/usr/share/asciidoc/icons"
+= A tutorial introduction to __Free__processing
+Tom Fogal <tfogal@sci.utah.edu>
+
+== Introduction
+
+The UNIX pipes system allows one to quickly compose computations from
+existing building blocks.  However, at times it can be aggravating that
+one cannot `get at the stream' that a program is using.  With that
+ability, we could, for example, watch a video stream at the same time
+that it moves to long-term storage.  We could compute statistics on
+how often we write versus read particular files, which might inform an
+archival storage policy.  We could provide visualizations of simulation
+data as it streams to disk.
+
+Such uses are difficult in modern pipeline systems.  One can pre-create
+a pipe as the target of the operations given above, and then write a
+multiplexing program that implements the +tee+-like nature we require.
+This hack, however, fails to provide a useful solution when data are
+moving *out* as opposed to *in*.  Finally, it is hard to envision a
+named-pipe-based solution providing useful semantics in a parallel
+environment that cannot guarantee an ordering between writers or any
+way to distinguish them.
+
+__Free__processing is a system for injecting code into these hard to
+reach areas.  All of these use cases and many more can be realized by
+utilizing the appropriate __free__processor.  These __free__processor
+modules plug-in to what we call the _symbiont_ to implement the desired
+processing at the desired time.  In short, __Free__processing gives you
+access to *any* data I/O in *any* program, allowing you to change any data
+movement operation into an opportunity for further processing.
+
+=== Goals
+
+Our primary focus is _on in-situ_ visualization of scientific data.
+__Free__processing is both simple and powerful.  Therefore, while
+__Free__processing can effect almost any kind of code injection, our
+goals are rather modest.  In this work, we focus on a set of tools and
+`best practices' that are useful in that domain.  We eschew the full
+capabilities of __Free__processing in order to provide a useful base
+that those in the scientific visualization community can get up and
+running more quickly.
+
+== Your first __free__processor
+
+A __free__processor is a module that plugs in to the __free__processing
+_symbiont_.footnote:[We use the terms ``__free__processor'' and ``module''
+interchangeably in this document.] The module's code is executed
+whenever a data movement operation is detected.  Operation of the
+original program is suspended while the __free__processor executes.
+
+Using the term `module' is perhaps too grandiose: a __free__processor
+is actually just a library, in the native format of the target system.
+The following shell commands generate a ``__free__processor'' on a Linux
+system:
+
+[sh]
+source~~~~
+touch nothing.c
+gcc -shared nothing.c -o libfp.so
+source~~~~
+
+Of course, this ``module'' is not very interesting.  Let's start
+with the classic example: Hello, world.  In __Free__processing, the
+`standard' entry point is not called "+main+", it is "+exec+":
+
+[C]
+source~~~~
+include::../processors/hello/hello.c[]
+source~~~~
+
+The `(void)` nonsense is a trick to convince C compilers not to warn us
+about unused variables.
+
+Now that we have defined the `exec` function, we have a valid
+__free__processor.  First, compile it the same way we compiled our
+`nothing.c` example.footnote:[Do not forget `-fPIC` on amd64 machines,
+however!]  Then, let's load it up and see it running.
+
+=== Using __free__processors
+
+We need three things to execute a __free__processor: 1) the
+__free__processor in library form, of course; 2) a program to inject
+our code into; and 3) a configuration file that specifies how the first
+two connect together.
+
+For the program, we can use almost any program on our system.  However,
+for the sake of demonstration it will be clearer to define our own
+program.  Here is a simple C program that opens a file and writes an
+(integer) argument into it.footnote:[It's worth noting that most of
+the code from this document is available in the __Free__processing
+source tree.  See the `processors/hello/` directory for the code in
+this introductory tutorial.]
+
+[C]
+source~~~~
+include::../processors/hello/output-int.c[]
+source~~~~
+
+Compile this as you would any C program; we will refer to it here as
+the program `hw`.  You may need to put your compiler into C99 mode for
+it to understand the code.
+
+Now let's run `hw` instrumented with __free__processing.
+You could have installed the main __free__processing
+library, `libsitu.so`, anywhere, so I'll just refer to it as
+`/path/to/freeprocessing/libsitu.so`.  You should substitute the path to
+your __free__processing install here here.
+
+[sh]
+source~~~~
+$ LD_PRELOAD=/path/to/freeprocessing/libsitu.so ./hw 42
+[8660](fp_init) could not find a 'situ.cfg'; will not apply any processing.
+source~~~~
+
+.Mac OS X
+NOTE: On Mac, the environment variable is `DYLD_INSERT_LIBRARIES`.
+Often, one needs to set `DYLD_FORCE_NAMESPACE` to `1` as well.
+
+(Your output will be slightly different.)  Here, my `hw` process
+happened to get a process ID (pid) of `8660`.  However, during its
+initialization, it complained that it could not find a `situ.cfg`
+file, and refused to do anything!  We'll need to define that before
+__Free__processing will do anything.
+
+`situ.cfg` simply maps stream names to processing code.  It supports an
+arbitrary number of mappings, but for now we just want one.  Copy this
+into a `situ.cfg` in your current directory:
+
+[source,verilog]
+include::../processors/hello/situ.cfg[]
+
+Now we can finally execute our __free__processor:
+
+[sh]
+source~~~~
+$ LD_PRELOAD=/path/to/freeprocessing/libsitu.so ./hw 42
+Hello, world!
+source~~~~
+
+.Debugging
+TIP: __Free__processing includes a number of debug _channels_.  By
+default, these channels are fairly quiet.  However, when debugging
+issues with a __free__processor or simply because we'd like to know
+what's going on under the hood, we can ask __free__processing to enable
+these with the `LIBSITU_DEBUG` environment variable.  Try setting this
+to "`opens=+trace`" and re-running the above example.  More information
+is available on http://tfogal.github.io/freeprocessing/[the website].
+
+== Min/Max __free__processor
+
+Describe how to make a __free__processor which computes a minimum and
+maximum.  Include initialization/print out the result on close.
