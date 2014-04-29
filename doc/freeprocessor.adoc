@@ -45,7 +45,7 @@ running more quickly.
 
 == Your first __free__processor
 
-A __free__processor is a module that plugs in to the __free__processing
+A __free__processor is a module that plugs in to the __Free__processing
 _symbiont_.footnote:[We use the terms ``__free__processor'' and ``module''
 interchangeably in this document.] The module's code is executed
 whenever a data movement operation is detected.  Operation of the
@@ -89,7 +89,7 @@ two connect together.
 For the program, we can use almost any program on our system.  However,
 for the sake of demonstration it will be clearer to define our own
 program.  Here is a simple C program that opens a file and writes an
-(integer) argument into it.footnote:[It's worth noting that most of
+(integer) argument into it.footnote:[It is worth noting that most of
 the code from this document is available in the __Free__processing
 source tree.  See the `processors/hello/` directory for the code in
 this introductory tutorial.]
@@ -103,11 +103,11 @@ Compile this as you would any C program; we will refer to it here as
 the program `hw`.  You may need to put your compiler into C99 mode for
 it to understand the code.
 
-Now let's run `hw` instrumented with __free__processing.
-You could have installed the main __free__processing
+Now let's run `hw` instrumented with __Free__processing.
+You could have installed the main __Free__processing
 library, `libsitu.so`, anywhere, so I'll just refer to it as
 `/path/to/freeprocessing/libsitu.so`.  You should substitute the path to
-your __free__processing install here here.
+your __Free__processing install here here.
 
 [sh]
 source~~~~
@@ -132,6 +132,11 @@ into a `situ.cfg` in your current directory:
 [source,verilog]
 include::../processors/hello/situ.cfg[]
 
+This configuration file simply says that any stream acting on the
+file `test-int` should utilize the __free__processor compiled to
+`libhello.so`.  We could have also used a wildcard to refer to the
+filename, such as `test-*` or even just `*`.
+
 Now we can finally execute our __free__processor:
 
 [sh]
@@ -144,12 +149,101 @@ source~~~~
 TIP: __Free__processing includes a number of debug _channels_.  By
 default, these channels are fairly quiet.  However, when debugging
 issues with a __free__processor or simply because we'd like to know
-what's going on under the hood, we can ask __free__processing to enable
+what's going on under the hood, we can ask __Free__processing to enable
 these with the `LIBSITU_DEBUG` environment variable.  Try setting this
 to "`opens=+trace`" and re-running the above example.  More information
 is available on http://tfogal.github.io/freeprocessing/[the website].
 
+Congratulations, you have now developed and executed your first
+__free__processor!  In the next section, we will describe how to get at
+the data as it flows through your __free__processor.
+
 == Min/Max __free__processor
 
-Describe how to make a __free__processor which computes a minimum and
-maximum.  Include initialization/print out the result on close.
+To demonstrate the handling of data, we will expand our
+__free__processor to compute the minimum and maximum values of a stream
+passed through it.  It is tempting to implement this by simply pulling
+the data out of our stream, computing the min/max, and reporting it.
+Create a new file named `minmax.c` with the following contents:
+
+[C,numbered]
+source~~~~
+include::../processors/hello/incorrect-minmax.c[]
+source~~~~
+
+In lines 7 and 8 we see how to get at the underlying data from the
+stream: the `buf` and `n` parameters in this case.  Here, we assume
+our data will come in the form of integers; if this assumption is
+false, then our __free__processor will compute incorrect values.  9
+initializes our minimum and maximum values, our loop computes these
+values, and finally our output comes on line 14.
+
+.Metadata
+IMPORTANT: Obtaining metadata (such as the underlying stream type
++int+ we used here) for our stream information is a thorny issue
+in __Free__processing.  The general mantra is to let the user do
+whatever they want, even if it's dangerous.  Thus, the system does
+not impose any particular method for obtaining metadata, or rather,
+does not provide any judgement on whether "read metadata from a file"
+is any better or worse than "assume we have IEEE 754 floating-point
+values".  This gives flexibility and power, but can be aggravating
+when one desires to do things "right", as the determination of "right"
+is external to __Free__processing itself.  For the beginning stages
+of this tutorial, we will embed any metadata into the structure of
+the code itself, for simplicity Later we will develop and advocate
+standardized mechanisms to obtain and utilize metadata.
+
+The trouble with this approach is due to the model that
+__Free__processing uses for the user's `exec` function. `exec` is
+executed every time the instrumented program performs any kind of
+`write` statement.  The `fwrite` in the `hw` program from the previous
+section translates directly into a single call of `exec`.  If we were
+to call `fwrite` in a loop, then, `exec` would execute as many times
+as the loop does.  In that case, we'd be calculating the minimum and
+maximum of _each_ write, as opposed to the minimum and maximum over
+_all_ writes.
+
+To fix this, we need a mechanism to only perform our `printf` at
+the end of the computation, instead of each intermediate value.
+Furthermore, we need to initialize our minimum and maximum _once_,
+before any processing takes place; if we initialize it during `exec`,
+then we will kill any intermediate computation from a previous `exec`
+invocation.
+
+__Free__processors implement these two ideas using the functions
+`file` and `finish`.  Add the following functions to your `minmax.c`
+implementation:
+
+[C]
+source~~~~
+include::../processors/minmax/mminit.c[]
+source~~~~
+
+`file` is invoked whenever a new file matching the `situ.cfg`
+mapping is opened.  This is therefore a good place to perform any
+initialization actions, such as reading metadata or obtaining
+external resources. `finish`, on the other hand, is invoked when the
+instrumented program will no longer utilize a given stream, and is
+therefore the place to clean up any needed resources.
+
+.C++
+NOTE: The three aforementioned functions closely follow the
+"initialize", "use" and "cleanup" methodology common in object-oriented
+programming.  For those of us who prefer to use C++, you might prefer
+to create a `new object` in `file`, manipulate that object in `exec`,
+and `delete` the object in `finish`.
+
+Make sure to modify `minmax.c`'s `exec` function to consist of only the
+loop as well.
+
+Now we have a valid __free__processor which can compute the min/max
+of all the data pushed through it.  Congratulations!  This is the
+first __free__processor that is conceivably useful in practice.  The
+full code for this processor is available in the `processors/minmax/`
+directory of the __Free__processing git repository.
+
+== Aside: __Free__processing in the real world
+
+CAUTION: not yet written, check back soon!
+
+We'll have an example of using __Free__processing with +scp+, here.
