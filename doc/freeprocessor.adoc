@@ -297,6 +297,78 @@ source tree, under `processors/nositu/`.
 == Metadata
 
 The data passed through a __free__processor is one-dimensional, untyped
-binary data.
+binary data.  This is much like when a collaborator sends a binary
+data file: the data is not useful until you receive some additional
+metadata that explains what the data's format is.  One needs to impose
+the data's organization on the binary stream to make it useful.
+
+__Free__processing lets you do this however you want.  However, here we
+espouse a particular method here in the interests of quickly getting a
+working system.  That method is to have a secondary file which contains
+this metadata, and parse out the information you need.  For generality,
+we recommend JSON for this.  Specifically, we'll seek to parse files
+such as this:
+
+[source,verilog]
+include::../contrib/json-starter/dataset.json[]
+
+The verbosity of the "+idx+"s is unfortunately necessary to conform to
+JSON.
+
+There is sample code in the repository to get you started using this
+kind of JSON.  This is located in `contrib/json-starter/`; we recommend
+you copy all of them into your __free__processor's directory and use
+them that way.  The `json.[ch]` files are a third-party JSON parser;
+documentation for it is outside the scope of this document.  The
+`jsdd.[ch]` files provide a number of functions that make parsing out
+our form of JSON easier.  They can also be customized to define/parse
+your own additions to the format.
+
+You will first have to read and parse the JSON file.  You can do this
+with the aptly-named `json_parse` function:
+
+[source,C]
+char* config = slurp(filename);
+json_value* js = json_parse(config, strlen(config));
+free(config);
+
+Here `slurp` is a hypothetical function which reads an entire file into
+an appropriately-sized string.  As seen, once the JSON data is parsed,
+we can throw away any of the memory it needed during the parse; all
+data is self-contained in the returned `js` value.
+
+The type information parses out the information from the "+type+"
+component of the JSON, and converts that into a `dtype` enumeration:
+
+[source,C]
+enum dtype type = js_datatype(js);
+if(GARBAGE == type) {
+  fprintf(stderr, "Error getting type from JSON!\n");
+  exit(EXIT_FAILURE);
+}
+
+There could be any number of dimensions to the data.  Thus, the
+`js_dimensions` function takes a second argument that tells us how many
+dimensions it read back.  The data we get back is allocated memory, so
+make sure to `free` it when you are done.
+
+[source,C]
+size_t ndims = 0;
+size_t* dims = js_dimensions(js, &ndims);
+printf("dimensions: [ ");
+for(size_t i=0; i < ndims; ++i) {
+  printf("%zu ", dims[i]);
+}
+printf("]\n");
+free(dims);
+
+Finally, when you are completely done reading information from the JSON
+data, make sure to free that memory too:
+
+[source,C]
+json_value_free(js);
+
+The file `jsdd.c` contains a number of routines useful for parsing out
+any additional properties.
 
 == Python
