@@ -32,16 +32,16 @@ processing at the desired time.  In short, __Free__processing gives you
 access to *any* data I/O in *any* program, allowing you to change any data
 movement operation into an opportunity for further processing.
 
-=== Goals
-
-Our primary focus is _on in-situ_ visualization of scientific data.
-__Free__processing is both simple and powerful.  Therefore, while
-__Free__processing can effect almost any kind of code injection, our
-goals are rather modest.  In this work, we focus on a set of tools and
-`best practices' that are useful in that domain.  We eschew the full
-capabilities of __Free__processing in order to provide a useful base
-that those in the scientific visualization community can get up and
-running more quickly.
+// === Goals
+//
+// Our primary focus is _on in-situ_ visualization of scientific data.
+// __Free__processing is both simple and powerful.  Therefore, while
+// __Free__processing can effect almost any kind of code injection, our
+// goals are rather modest.  In this work, we focus on a set of tools and
+// `best practices' that are useful in that domain.  We eschew the full
+// capabilities of __Free__processing in order to provide a useful base
+// that those in the scientific visualization community can get up and
+// running more quickly.
 
 == Your first __free__processor
 
@@ -242,8 +242,61 @@ first __free__processor that is conceivably useful in practice.  The
 full code for this processor is available in the `processors/minmax/`
 directory of the __Free__processing git repository.
 
-== Aside: __Free__processing in the real world
+== Aside: real world __Free__processing with +scp+
 
 CAUTION: not yet written, check back soon!
 
 We'll have an example of using __Free__processing with +scp+, here.
+
+== Aside: _no situ_ example (producer/consumer model)
+
+__Free__processing was designed to make a variety of _in situ_
+visualization scenarios easy to implement.  However, it can also be
+used as a simple mechanism for _chaining_ dependent tasks.  In this
+scenario, a program creates many different outputs in a sequence; each
+output, in turn requires some postprocessing by a separate program.
+
+Implementing this in the standard UNIX paradigm is difficult.  The
+problem is that the producers and consumers need some method of
+synchronization: the consumers cannot start until the producers create
+a data set.  Furthermore, the production of +N+ outputs is sequentially
+performed by a _single_ process.  One solution is to add code to the
+producing program such that it creates and manages consumers.  A second
+solution is to add code to consumers to (heuristically) identify when a
+producer has created an output.  Neither solution is desirable.
+
+The crux of the issue is that every producer/consumer system has a
+"hidden" third entity: the synchronization.  This issue 'infects'
+both sides of the producer/consumer problem: producers must create
+notifications and consumers must ingest them.  It would be much better
+if we could develop the three components: producers; consumers; and
+synchronization mechanisms; in isolation.
+
+This can be achieved with __Free__processing.  The essence of the idea
+is quite simple:
+
+[C]
+source~~~~
+include::../processors/nositu/theory.c[]
+source~~~~
+
+That is, all we need is a `finish` function which fires off the
+consumer process.  We can attach this __free__processor to the
+producer, and then whenever it finishes with a file, it will
+automatically create a new consumer.
+
+The devil is, of course, in the details.  The missing `consumer`
+function here must implement the standard UNIX bookkeeping for creating
+and managing processes.  Furthermore, in practice one would want to
+maintain a queue or pool of produced resources, and fire off a limited
+number of consumers.
+
+A ready-made __free__processor for this use case is available in the
+source tree, under `processors/nositu/`.
+
+== Metadata
+
+The data passed through a __free__processor is one-dimensional, untyped
+binary data.
+
+== Python
