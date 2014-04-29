@@ -168,7 +168,7 @@ Create a new file named `minmax.c` with the following contents:
 
 [C,numbered]
 source~~~~
-include::../processors/hello/incorrect-minmax.c[]
+include::../processors/minmax/incorrect-minmax.c[]
 source~~~~
 
 In lines 7 and 8 we see how to get at the underlying data from the
