@@ -16,13 +16,13 @@ archival storage policy.  We could provide visualizations of simulation
 data as it streams to disk.
 
 Such uses are difficult in modern pipeline systems.  One can pre-create
-a pipe as the target of the operations given above, and then write a
-multiplexing program that implements the +tee+-like nature we require.
-This hack, however, fails to provide a useful solution when data are
-moving *out* as opposed to *in*.  Finally, it is hard to envision a
-named-pipe-based solution providing useful semantics in a parallel
-environment that cannot guarantee an ordering between writers or any
-way to distinguish them.
+a pipe as the target of the operations given above, and then write
+a multiplexing program that implements the +tee(1)+-like nature we
+require.  This hack, however, fails to provide a useful solution when
+data are moving *out* as opposed to *in*.  Finally, it is hard to
+envision a named-pipe-based solution providing useful semantics in a
+parallel environment that cannot guarantee an ordering between writers
+or any way to distinguish them.
 
 __Free__processing is a system for injecting code into these hard to
 reach areas.  All of these use cases and many more can be realized by
@@ -59,7 +59,7 @@ system:
 [sh]
 source~~~~
 touch nothing.c
-gcc -shared nothing.c -o libfp.so
+gcc -fPIC -shared nothing.c -o libfp.so
 source~~~~
 
 Of course, this ``module'' is not very interesting.  Let's start
@@ -76,8 +76,7 @@ about unused variables.
 
 Now that we have defined the `exec` function, we have a valid
 __free__processor.  First, compile it the same way we compiled our
-`nothing.c` example.footnote:[Do not forget `-fPIC` on amd64 machines,
-however!]  Then, let's load it up and see it running.
+`nothing.c` example.  Then, let's load it up and see it running.
 
 === Using __free__processors
 
@@ -116,16 +115,17 @@ $ LD_PRELOAD=/path/to/freeprocessing/libsitu.so ./hw 42
 source~~~~
 
 .Mac OS X
-NOTE: On Mac, the environment variable is `DYLD_INSERT_LIBRARIES`.
-Often, one needs to set `DYLD_FORCE_NAMESPACE` to `1` as well.
+NOTE: On Mac, the environment variable is `DYLD_INSERT_LIBRARIES`, not
+`LD_PRELOAD`.  Often, one needs to set `DYLD_FORCE_NAMESPACE` to `1` as
+well.
 
-(Your output will be slightly different.)  Here, my `hw` process
+Your output will be slightly different.  Here, my `hw` process
 happened to get a process ID (pid) of `8660`.  However, during its
 initialization, it complained that it could not find a `situ.cfg`
 file, and refused to do anything!  We'll need to define that before
 __Free__processing will do anything.
 
-`situ.cfg` simply maps stream names to processing code.  It supports an
+`situ.cfg` maps stream names to processing code.  It supports an
 arbitrary number of mappings, but for now we just want one.  Copy this
 into a `situ.cfg` in your current directory:
 
@@ -134,8 +134,8 @@ include::../processors/hello/situ.cfg[]
 
 This configuration file simply says that any stream acting on the
 file `test-int` should utilize the __free__processor compiled to
-`libhello.so`.  We could have also used a wildcard to refer to the
-filename, such as `test-*` or even just `*`.
+`./.libs/libhello.so`.  We could have also used a wildcard to refer to
+the filename, such as `test-*` or even just `*`.
 
 Now we can finally execute our __free__processor:
 
@@ -171,31 +171,30 @@ source~~~~
 include::../processors/minmax/incorrect-minmax.c[]
 source~~~~
 
-In lines 7 and 8 we see how to get at the underlying data from the
+In lines 9 and 10 we see how to get at the underlying data from the
 stream: the `buf` and `n` parameters in this case.  Here, we assume
 our data will come in the form of integers; if this assumption is
-false, then our __free__processor will compute incorrect values.  9
+false, then our __free__processor will compute incorrect values.  11
 initializes our minimum and maximum values, our loop computes these
-values, and finally our output comes on line 14.
+values, and finally our output comes on line 16.
 
 .Metadata
 IMPORTANT: Obtaining metadata (such as the underlying stream type
-+int+ we used here) for our stream information is a thorny issue
-in __Free__processing.  The general mantra is to let the user do
-whatever they want, even if it's dangerous.  Thus, the system does
-not impose any particular method for obtaining metadata, or rather,
-does not provide any judgement on whether "read metadata from a file"
-is any better or worse than "assume we have IEEE 754 floating-point
-values".  This gives flexibility and power, but can be aggravating
-when one desires to do things "right", as the determination of "right"
-is external to __Free__processing itself.  For the beginning stages
-of this tutorial, we will embed any metadata into the structure of
-the code itself, for simplicity Later we will develop and advocate
++int+ we used here) for our stream information is a thorny issue in
+__Free__processing.  The general mantra is to let the user do whatever
+they want, even if it's dangerous.  Thus, the system does not impose
+any particular method for obtaining metadata, or rather, does not
+provide any judgement on whether "read metadata from a file" is any
+better or worse than "assume we have IEEE 754 floating-point values".
+This gives flexibility and power, but can be aggravating when one
+desires to produce idiomatic __free__processors.  For the beginning
+stages of this tutorial, we will embed any metadata into the structure
+of the code itself, for simplicity. Later we will develop and advocate
 standardized mechanisms to obtain and utilize metadata.
 
 The trouble with this approach is due to the model that
 __Free__processing uses for the user's `exec` function. `exec` is
-executed every time the instrumented program performs any kind of
+executed *every* time the instrumented program performs any kind of
 `write` statement.  The `fwrite` in the `hw` program from the previous
 section translates directly into a single call of `exec`.  If we were
 to call `fwrite` in a loop, then, `exec` would execute as many times
@@ -242,19 +241,19 @@ first __free__processor that is conceivably useful in practice.  The
 full code for this processor is available in the `processors/minmax/`
 directory of the __Free__processing git repository.
 
-== Aside: real world __Free__processing with +scp+
+== Example: real world __Free__processing with +scp+
 
 CAUTION: not yet written, check back soon!
 
 We'll have an example of using __Free__processing with +scp+, here.
 
-== Aside: _no situ_ example (producer/consumer model)
+== Example: _no situ_ example (producer/consumer model)
 
 __Free__processing was designed to make a variety of _in situ_
 visualization scenarios easy to implement.  However, it can also be
 used as a simple mechanism for _chaining_ dependent tasks.  In this
-scenario, a program creates many different outputs in a sequence; each
-output, in turn requires some postprocessing by a separate program.
+scenario, a program creates many different outputs in sequence; each
+output, in turn, requires some postprocessing by a separate program.
 
 Implementing this in the standard UNIX paradigm is difficult.  The
 problem is that the producers and consumers need some method of
@@ -372,3 +371,27 @@ The file `jsdd.c` contains a number of routines useful for parsing out
 any additional properties.
 
 == Python
+
+One of the many __free__processors which comes with the
+__Free__processing distribution is a Python processor named
+`freepython`.  Note this is only built if you pass the
+`--enable-python` option when you `configure` the package.
+
+The module does a few things:
+
+  1. Creates a Python module named `freeprocessing` and imports it.
+  2. Exports a number of values from the `freeprocessing` module:
+  ** `field`: the name of the field
+  ** `rank`: MPI process rank of running process
+  ** `stream`: the stream data as a numpy array
+  ** `timestep`: the number of files opened thus far
+  3. Executes the script `vis.py` in the current directory.
+
+The python __free__processor works slightly different than the others.
+First, it expects to be run on HDF5 files.  HDF5 provides additional
+metadata that the __free__processor uses to provide the correct shape
+for `freeprocessing.stream`.  Furthermore, since HDF5 output data is
+always "interesting" from a visualization standpoint, the patterns
+listed in `situ.cfg` filter on the dataset name (as used in HDF5)
+instead of the file name.  This makes it considerably easier to pull
+out just a particular field in a multi-field HDF5 file.

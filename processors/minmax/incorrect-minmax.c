@@ -1,3 +1,5 @@
+/* Calculate the min/max of integer data that flows through it.
+ * WARNING: this has a subtle bug, do not use directly! */
 #include <limits.h>
 #include <stdio.h>
 
