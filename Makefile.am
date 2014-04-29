@@ -16,11 +16,11 @@ ACLOCAL_AMFLAGS = -I m4
 
 LIB_LTLIBRARIES = libsitu.la
 libsitu_la_SOURCES = \
-  debug.c \
-  fproc.c \
-  h5.c \
-  posix.c \
-  simplesitu.c
+  $(top_srcdir)/debug.c \
+  $(top_srcdir)/fproc.c \
+  $(top_srcdir)/h5.c \
+  $(top_srcdir)/posix.c \
+  $(top_srcdir)/simplesitu.c
 libsitu_la_LIBADD = -ldl -lrt @LTLIBOBJS@
 
 bin_PROGRAMS = situ
@@ -33,4 +33,5 @@ pkglib_LTLIBRARIES =
 include processors/hello/mk.inc
 include processors/minmax/mk.inc
 include processors/netz/mk.inc
+include processors/nositu/mk.inc
 include processors/python/mk.inc
