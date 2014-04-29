@@ -31,5 +31,6 @@ situ_SOURCES = forkenv.c evfork.c
 pkglib_LTLIBRARIES =
 
 include processors/hello/mk.inc
+include processors/minmax/mk.inc
 include processors/netz/mk.inc
 include processors/python/mk.inc
