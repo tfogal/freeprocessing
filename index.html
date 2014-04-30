@@ -28,9 +28,11 @@
       <section>
 
 <p><i>Free</i>processing is a tool for injecting arbitrary computations
-at data movement points in a program.  It was initially designed for
-doing <i>in situ</i> visualizations, thought it is applicable in a much
-wider domain.</p>
+at data movement points in a program.  It requires <em>zero</em>
+modifications to the subject program, though you generally need to
+write the computations yourself.  It was initially designed for doing
+<i>in situ</i> visualization, thought it is applicable in a much wider
+context.</p>
 
 <h1>
   <a name="obtaining" class="anchor" href="#obtaining">
@@ -51,13 +53,11 @@ directly from github</a>.
   </a>
 </h1>
 
-<p>
-The build system is based on the GNU autotools toolchain.  In
+<p>The build system is based on the GNU autotools toolchain.  In
 short, this means that installation is based on the familiar
 <tt>./configure</tt>, <tt>make</tt>, <tt>make install</tt> sequence.
-<i>Free</i>processing does not need root privileges can thus be
-installed inside your home directory.
-</p>
+<i>Free</i>processing does not need root privileges and can thus be
+installed inside your home directory.</p>
 
 <p>
 Those interested in using the Python interface will want to
@@ -79,22 +79,31 @@ Those interested in using the Python interface will want to
   <ul>
     <li><a href="http://www.youtube.com/watch?v=eFpvyJU_0Zs">The earliest use
         of <i>Free</i>processing</a> reformatted data out of the 'PsiPhi'
-        simulation (LES) to be more amenable for visualization.
+        (LES) simulation to be more amenable for visualization.
     <li><a href="http://yt-project.org/">yt</a> users will be especially
         interested to
         <a href="http://www.youtube.com/watch?v=eEUtmdh9e5E">watch the author's
         forays into <i>in situ</i> visualization of Enzo outputs using yt.
   </ul>
 
-  <li><a href="./tutorial/">A tutorial for <i>Free</i>processing</a> is
-  available.  It assumes you have things compiled and installed.
+  <li><a href="./tutorial/freeprocessor.html">A tutorial for
+  <i>Free</i>processing</a> is available.  It assumes you have things
+  compiled and installed.
+
+  <li>A number of <a href="environment.html">environment variables</a>
+  are relevant for <i>Free</i>processing operation.
+
+  <li>There are a number of example <i>free</i>processors in the source tree,
+  such as <a
+  href="https://github.com/tfogal/freeprocessing/tree/master/processors/hello">the
+  standard "Hello, world!" example</a>.
 
   <li><i>Free</i>processing has been
   <a href="http://www.sci.utah.edu/~tfogal/academic/freeprocessing/Fogal-2014-InSitu.pdf">
   published</a> at
   <a href="http://www.vis.uni-stuttgart.de/egpgv/egpgv2014/">EGPGV</a>.
   If you can make it out to Wales, some of the authors will be present
-  at EuroVis and are always welcome to conversations with users.
+  at EuroVis and are always happy to converse with users.
 
 </ul>
 
@@ -106,7 +115,7 @@ Those interested in using the Python interface will want to
 </h1>
 
 <p>
-The author believes "FAQs" decay too easily into "AQs", but <a
+The author believes "FAQs" decay too easily into "unAQs", but <a
 href="./common-problems.html">we do maintain a list of issues and their
 solutions</a>
 that we think may help many.
@@ -119,23 +128,11 @@ provide real-time help via IRC or skype, and in return he asks only for
 real-time feedback.
 </p>
 
-<p><code>pattern { exec: /path/to/library.so }</code></p>
-
-<p>Where <tt>pattern</tt> is a shell glob and
-<tt>library.so</tt> is a library implementing a pre-prescribed
-interface (see <tt>LIBRARIES</tt>).  An example:</p>
-
-<pre><code>*header* { exec: ./libmine.so }
-*.data { exec: ./libmine.so }
-*tosend* { exec: ./libinstr.so }
-</code></pre>
-
-<p>This defines three processing elements, <code>libmine</code> will
-be used whenever a filename which matches <code>*header*</code> or
-<code>*.data</code> is accessed. <em>Both</em> instances get called.
-The order they are called is undefined.</p>
-
 <!--
+
+This should be moved somewhere, one can infer from other documentation,
+but it is difficult!
+
 <h1>
 <a name="libraries" class="anchor" href="#libraries"><span class="octicon octicon-link"></span></a>Libraries</h1>
 
@@ -167,71 +164,6 @@ recommend parsing a config file the first time <code>exec</code> is called.</p>
 <p><code>finish</code> notifies you when the program is finished with a file or
 pattern.  Good time to clean up resources.</p>
 
--->
-<h1>
-<a name="environment" class="anchor" href="#environment"><span class="octicon octicon-link"></span></a>Environment</h1>
-
-<ul>
-<li>
-<code>LIBSITU_DEBUG</code>: used to selectively enable debug information.  See
-below for more info.</li>
-</ul>
-
-<h2>
-<a name="debug-channel-settings" class="anchor" href="#debug-channel-settings"><span class="octicon octicon-link"></span></a>Debug Channel Settings</h2>
-
-<p>The symbiont has a set of unique debug channels.  Generally these are
-all related to a specific feature, such as investigating when files are
-opened, or when data is transferred, or other information.</p>
-
-<p>In addition, each channel has a set of *class*es, which might loosely
-be thought of as severity.  So you can, for example, turn on only the
-warnings from a particular channel, or only the errors.</p>
-
-<p>The way one configures these channels is through the
-<code>LIBSITU_DEBUG</code> environment variable.  The general form is <code>channel
-name=[+-]class[,...]</code>, e.g.:</p>
-
-<p>opens=+warn</p>
-
-<p>which says to enable warnings on the channel <code>opens</code>.  Multiple class
-specifications are separated by commas:</p>
-
-<p>opens=+trace,-warn</p>
-
-<p>Multiple channels are delimited by semicolons:</p>
-
-<p>opens=+trace,-warn;writes=+trace</p>
-
-<p>The currently defined channels are:</p>
-
-<ul>
-<li>
-<code>opens</code>: all <code>open</code>-esque calls, along with their <code>close</code>
-counterparts.</li>
-<li>
-<code>freeproc</code>: loading and using libraries</li>
-<li>
-<code>writes</code>: all <code>write</code>-esque calls. (<em>CAUTION</em>: spammy)</li>
-<li>
-<code>posix</code>: trace POSIX I/O calls.</li>
-<li>
-<code>hdf5</code>: HDF5 calls of interest.</li>
-</ul><p>The currently defined classes are:</p>
-
-<ul>
-<li>
-<code>err</code>: errors which almost certainly indicate a bug in either the
-symbiont or the host program.</li>
-<li>
-<code>warn</code>: generally anomalous conditions which might not be a
-problem, such as an internal table filling up.</li>
-<li>
-<code>trace</code>: notification <em>when</em> a call occurs, in a manner similar to
-<code>strace(1)</code> or <code>ltrace(1)</code>.</li>
-</ul>
-
-<!--
 <h1>
 <a name="notes" class="anchor" href="#notes"><span class="octicon octicon-link"></span></a>Notes</h1>
 
