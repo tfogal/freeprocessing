@@ -231,6 +231,13 @@ p code {
   background-color: LightGray;
 }
 
+p tt {
+  background-color: LightGray;
+}
+ul tt {
+  background-color: LightGray;
+}
+
 code, pre {
   font-family: monospace;
   color: #333;

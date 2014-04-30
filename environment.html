@@ -1,0 +1,115 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <title>Freeprocessing</title>
+
+    <link rel="stylesheet" href="stylesheets/styles.css">
+    <link rel="stylesheet" href="stylesheets/pygment_trac.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+
+    <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+  </head>
+  <body>
+    <div class="wrapper">
+      <header>
+        <h1><i>Free</i>processing</h1>
+        <p>in situ visualization tool</p>
+        <p class="view"><a href="https://github.com/tfogal/freeprocessing">View the Project on GitHub <small>tfogal/freeprocessing</small></a></p>
+        <ul>
+          <li><a href="https://github.com/tfogal/freeprocessing/zipball/master">Download <strong>ZIP File</strong></a></li>
+          <li><a href="https://github.com/tfogal/freeprocessing/tarball/master">Download <strong>TAR Ball</strong></a></li>
+          <li><a href="https://github.com/tfogal/freeprocessing">View On <strong>GitHub</strong></a></li>
+        </ul>
+      </header>
+      <section>
+
+<h1>
+<a name="environment" class="anchor" href="#environment">
+<span class="octicon octicon-link"></span></a>Environment
+</h1>
+
+<p><i>Free</i>processing respects a number of different environment
+variables, all of which begin with <tt>LIBSITU_</tt>:</p>
+
+<ul>
+  <li><tt>LIBSITU_DEBUG</tt>: used to selectively enable debug
+  information.  See below for more information.</li>
+
+  <li><tt>LIBSITU_SYNC</tt>: Used in the <em>no situ</em>
+  <i>free</i>processor to make subject and consumer processes
+  synchronous with one another.
+
+</ul>
+
+<h2>
+<a name="debug-channel-settings" class="anchor" href="#debug-channel-settings">
+<span class="octicon octicon-link"></span></a>Debug Channel Settings
+</h2>
+
+<p>The symbiont has a set of unique debug channels.  Generally these
+are all related to a specific feature, such as investigating when files
+are opened, or when data is transferred, or other information.</p>
+
+<p>In addition, each channel has a set of <em>class</em>es, which might
+loosely be thought of as severity.  So you can, for example, turn on
+only the warnings from a particular channel, or only the errors.</p>
+
+<p>The way one configures these channels is through the
+<code>LIBSITU_DEBUG</code> environment variable.  The general form is
+<code>channel name=[+-]class[,...]</code>, e.g.:</p>
+
+<p>opens=+warn</p>
+
+<p>which says to enable warnings on the channel <code>opens</code>.
+Multiple class specifications are separated by commas:</p>
+
+<p>opens=+trace,-warn</p>
+
+<p>Multiple channels are delimited by semicolons:</p>
+
+<p>opens=+trace,-warn;writes=+trace</p>
+
+<p>The currently defined channels are:</p>
+
+<ul>
+
+  <li><tt>opens</tt>: all <tt>open</tt>-esque calls, along with their
+      <tt>close</tt> counterparts.</li>
+
+  <li><tt>freeproc</tt>: loading and using libraries</li>
+
+  <li><tt>writes</tt>: all <tt>write</tt>-esque calls.
+    (<em>CAUTION</em>: spammy)</li>
+
+  <li><tt>posix</tt>: trace POSIX I/O calls.</li>
+
+  <li><tt>hdf5</tt>: HDF5 calls of interest.</li>
+
+</ul>
+
+<p>The currently defined classes are:</p>
+
+<ul>
+
+  <li><tt>err</tt>: errors which almost certainly indicate a bug in
+  either the symbiont or the host program.</li>
+
+  <li><tt>warn</tt>: generally anomalous conditions which might not be
+  a problem, such as an internal table filling up.</li>
+
+  <li><tt>trace</tt>: notification <em>when</em> a call occurs, in a
+  manner similar to <tt>strace(1)</tt> or <tt>ltrace(1)</tt>.</li>
+
+</ul>
+      </section>
+    </div>
+    <footer>
+      <p>Project maintained by <a href="https://github.com/tfogal">tom</a></p>
+      <p>Hosted on GitHub Pages &mdash; Theme modified from <a href="https://github.com/orderedlist">orderedlist</a></p>
+    </footer>
+  </body>
+</html>
