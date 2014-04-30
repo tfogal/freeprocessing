@@ -2,7 +2,8 @@
 // a2x: --dblatex-opts "-P doc.publisher.show=0"
 // a2x: --dblatex-opts "-P iconsdir=/usr/share/asciidoc/icons"
 = A tutorial introduction to __Free__processing
-Tom Fogal <tfogal@sci.utah.edu>
+:author: Tom Fogal <tfogal@sci.utah.edu>
+:toc:
 
 == Introduction
 
@@ -108,11 +109,9 @@ library, `libsitu.so`, anywhere, so I'll just refer to it as
 `/path/to/freeprocessing/libsitu.so`.  You should substitute the path to
 your __Free__processing install here here.
 
-[sh]
-source~~~~
+[source,bash]
 $ LD_PRELOAD=/path/to/freeprocessing/libsitu.so ./hw 42
 [8660](fp_init) could not find a 'situ.cfg'; will not apply any processing.
-source~~~~
 
 .Mac OS X
 NOTE: On Mac, the environment variable is `DYLD_INSERT_LIBRARIES`, not
@@ -129,7 +128,8 @@ __Free__processing will do anything.
 arbitrary number of mappings, but for now we just want one.  Copy this
 into a `situ.cfg` in your current directory:
 
-[source,verilog]
+// Finding a language that doesn't do highlighting
+[source,java]
 include::../processors/hello/situ.cfg[]
 
 This configuration file simply says that any stream acting on the
@@ -245,7 +245,7 @@ directory of the __Free__processing git repository.
 
 CAUTION: not yet written, check back soon!
 
-We'll have an example of using __Free__processing with +scp+, here.
+We'll have an example of using __Free__processing with +scp+ here.
 
 == Example: _no situ_ example (producer/consumer model)
 
@@ -254,6 +254,7 @@ visualization scenarios easy to implement.  However, it can also be
 used as a simple mechanism for _chaining_ dependent tasks.  In this
 scenario, a program creates many different outputs in sequence; each
 output, in turn, requires some postprocessing by a separate program.
+You might also think of this scenario as `poor man's _in situ_'.
 
 Implementing this in the standard UNIX paradigm is difficult.  The
 problem is that the producers and consumers need some method of
@@ -308,7 +309,7 @@ this metadata, and parse out the information you need.  For generality,
 we recommend JSON for this.  Specifically, we'll seek to parse files
 such as this:
 
-[source,verilog]
+[source,java]
 include::../contrib/json-starter/dataset.json[]
 
 The verbosity of the "+idx+"s is unfortunately necessary to conform to
