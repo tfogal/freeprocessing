@@ -1,0 +1,96 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <title>Freeprocessing</title>
+
+    <link rel="stylesheet" href="stylesheets/styles.css">
+    <link rel="stylesheet" href="stylesheets/pygment_trac.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+
+    <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+  </head>
+  <body>
+    <div class="wrapper">
+      <header>
+        <h1><i>Free</i>processing</h1>
+        <p>in situ visualization tool</p>
+        <p class="view"><a href="https://github.com/tfogal/freeprocessing">View the Project on GitHub <small>tfogal/freeprocessing</small></a></p>
+        <ul>
+          <li><a href="https://github.com/tfogal/freeprocessing/zipball/master">Download <strong>ZIP File</strong></a></li>
+          <li><a href="https://github.com/tfogal/freeprocessing/tarball/master">Download <strong>TAR Ball</strong></a></li>
+          <li><a href="https://github.com/tfogal/freeprocessing">View On <strong>GitHub</strong></a></li>
+        </ul>
+      </header>
+      <section>
+
+<h1>
+  <a name="issues" class="anchor" href="#issues">
+    <span class="octicon octicon-link"></span>
+    Common problems
+  </a>
+</h1>
+
+<p>We hope <i>Free</i>processing is easy to use and quite clear, but
+there are a number of confusions that have arisen.
+
+<h2>
+  <a name="issue-mpi" class="anchor" href="#issue-mpi">
+    <tt>LD_PRELOAD</tt> is breaking MPI.  How can I get this working
+    with my (MPI-)parallel programs?
+  </a>
+</h2>
+
+<p>Unfortunately, the <tt>LD_PRELOAD</tt> instrumentation affects
+<tt>mpirun</tt>/<tt>mpiexec</tt> programs as well, which can create
+many problems on parallel systems.  The solution is to get the
+<tt>LD_PRELOAD</tt> environment variable to affect the <em>child</em>
+program, not the <tt>mpirun</tt> "shell".</p>
+
+<p>If only it were that simple.  MPI implementations all implement
+"pass an environment variable to a subprocess" differently.  Known
+methods:</p>
+
+<ul>
+  <li><em>OpenMPI</em>: Use the <tt>-x</tt> command-line option, e.g.
+  <tt>mpirun -x LD_PRELOAD=./libsitu.so -np 4 /path/to/program</tt>
+
+  <li><em>MPICH</em>: Use <tt>-env</tt>, and drop the <tt>=</tt>:
+  <tt>mpiexec -env LD_PRELOAD ./libsitu.so -np 4 /path/to/program</tt>
+
+  <li><em>BlueGene</em>: Use <tt>--envs</tt>:
+  <tt>runjob --envs LD_PRELOAD=./libsitu.so --exe /path/to/myprogram</tt>
+</ul>
+
+<h2>
+  <a name="issue-patterns" class="anchor" href="#issue-patterns">
+    I have compiled my <i>free</i>processor, created my <tt>situ.cfg</tt>, run
+    my program with <tt>LD_PRELOAD</tt>, dotted my "i"s, crossed my "t"s, and
+    <em>still</em> <i>Free</i>processing doesn't seem to <em>do</em> anything.
+    What gives?
+  </a>
+</h2>
+
+<p>There are a myriad of things that could go wrong, but one
+often-confused aspect is the patterns that are used to match filenames.
+These are the patterns that you enter in <tt>situ.cfg</tt> outside of
+the curly brackets.  The names are case sensitive, and generally follow
+the same rules as the patterns that 'Korn' (POSIX) shell derivatives
+follow.</p>
+
+<p>The best way to debug this is by using the <tt>LIBSITU_DEBUG</tt>
+variable.  Set it to <tt>opens=+trace</tt> and it will tell you
+the files that it <i>Free</i>processing, versus the ones that are
+<tt>ignored by policy</tt> (as per the debug message).</p>
+
+      </section>
+    </div>
+    <footer>
+      <p>Project maintained by <a href="https://github.com/tfogal">tom</a></p>
+      <p>Hosted on GitHub Pages &mdash; Theme modified from <a href="https://github.com/orderedlist">orderedlist</a></p>
+    </footer>
+  </body>
+</html>

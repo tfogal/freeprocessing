@@ -26,10 +26,98 @@
         </ul>
       </header>
       <section>
-        <p>This is a data transfer symbiont.  It is essentially 'tee' in library form.</p>
 
-<p>To use it, <code>LD_PRELOAD</code> the library (<code>libsitu.so</code>) into your program.  At that
-point, it looks for all of your <code>write</code> calls and does its magic.</p>
+<p><i>Free</i>processing is a tool for injecting arbitrary computations
+at data movement points in a program.  It was initially designed for
+doing <i>in situ</i> visualizations, thought it is applicable in a much
+wider domain.</p>
+
+<h1>
+  <a name="obtaining" class="anchor" href="#obtaining">
+    <span class="octicon octicon-link"></span>
+    Obtaining
+  </a>
+</h1>
+
+<p><i>Free</i>processing is still in 'early adopter' mode.  We
+recommend you use one of the links at the top right, or just <a
+href="https://github.com/tfogal/freeprocessing.git">grab the source
+directly from github</a>.
+
+<h1>
+  <a name="building" class="anchor" href="#building">
+    <span class="octicon octicon-link"></span>
+    Compilation
+  </a>
+</h1>
+
+<p>
+The build system is based on the GNU autotools toolchain.  In
+short, this means that installation is based on the familiar
+<tt>./configure</tt>, <tt>make</tt>, <tt>make install</tt> sequence.
+<i>Free</i>processing does not need root privileges can thus be
+installed inside your home directory.
+</p>
+
+<p>
+Those interested in using the Python interface will want to
+<tt>./configure</tt> with the <tt>--enable-python</tt> option.
+</p>
+
+<h1>
+  <a name="documentation" class="anchor" href="#documentation">
+    <span class="octicon octicon-link"></span>
+    Documentation
+  </a>
+</h1>
+
+<ul>
+
+  <li>There are a couple of early demonstration videos available.
+  These are not great documentation, but show you what kinds of things
+  you can do with <i>Free</i>processing.
+  <ul>
+    <li><a href="http://www.youtube.com/watch?v=eFpvyJU_0Zs">The earliest use
+        of <i>Free</i>processing</a> reformatted data out of the 'PsiPhi'
+        simulation (LES) to be more amenable for visualization.
+    <li><a href="http://yt-project.org/">yt</a> users will be especially
+        interested to
+        <a href="http://www.youtube.com/watch?v=eEUtmdh9e5E">watch the author's
+        forays into <i>in situ</i> visualization of Enzo outputs using yt.
+  </ul>
+
+  <li><a href="./tutorial/">A tutorial for <i>Free</i>processing</a> is
+  available.  It assumes you have things compiled and installed.
+
+  <li><i>Free</i>processing has been
+  <a href="http://www.sci.utah.edu/~tfogal/academic/freeprocessing/Fogal-2014-InSitu.pdf">
+  published</a> at
+  <a href="http://www.vis.uni-stuttgart.de/egpgv/egpgv2014/">EGPGV</a>.
+  If you can make it out to Wales, some of the authors will be present
+  at EuroVis and are always welcome to conversations with users.
+
+</ul>
+
+<h1>
+  <a name="support" class="anchor" href="#support">
+    <span class="octicon octicon-link"></span>
+    Support
+  </a>
+</h1>
+
+<p>
+The author believes "FAQs" decay too easily into "AQs", but <a
+href="./common-problems.html">we do maintain a list of issues and their
+solutions</a>
+that we think may help many.
+</p>
+
+<p>
+The best way to get help is by sending an email to <a
+href="http://www.sci.utah.edu/~tfogal/">Tom Fogal</a>.  He is happy to
+provide real-time help via IRC or skype, and in return he asks only for
+real-time feedback.
+</p>
 
 <h1>
 <a name="configuration" class="anchor" href="#configuration"><span class="octicon octicon-link"></span></a>Configuration</h1>
