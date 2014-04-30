@@ -35,14 +35,14 @@
 </h1>
 
 <p>We hope <i>Free</i>processing is easy to use and quite clear, but
-there are a number of confusions that have arisen.
+there are a number of issues that have come up.</p>
 
-<h2>
+<h3>
   <a name="issue-mpi" class="anchor" href="#issue-mpi">
     <tt>LD_PRELOAD</tt> is breaking MPI.  How can I get this working
     with my (MPI-)parallel programs?
   </a>
-</h2>
+</h3>
 
 <p>Unfortunately, the <tt>LD_PRELOAD</tt> instrumentation affects
 <tt>mpirun</tt>/<tt>mpiexec</tt> programs as well, which can create
@@ -65,14 +65,14 @@ methods:</p>
   <tt>runjob --envs LD_PRELOAD=./libsitu.so --exe /path/to/myprogram</tt>
 </ul>
 
-<h2>
+<h3>
   <a name="issue-patterns" class="anchor" href="#issue-patterns">
     I have compiled my <i>free</i>processor, created my <tt>situ.cfg</tt>, run
     my program with <tt>LD_PRELOAD</tt>, dotted my "i"s, crossed my "t"s, and
     <em>still</em> <i>Free</i>processing doesn't seem to <em>do</em> anything.
     What gives?
   </a>
-</h2>
+</h3>
 
 <p>There are a myriad of things that could go wrong, but one
 often-confused aspect is the patterns that are used to match filenames.
@@ -85,6 +85,22 @@ follow.</p>
 variable.  Set it to <tt>opens=+trace</tt> and it will tell you
 the files that it <i>Free</i>processing, versus the ones that are
 <tt>ignored by policy</tt> (as per the debug message).</p>
+
+<h3>
+  <a name="issue-mpi4py" class="anchor" href="#issue-mpi4py">
+    When I use the Python <i>free</i>processor on my parallel program, I get
+    a strange import error deep within
+    <a href="http://mpi4py.scipy.org/">mpi4py</a>.
+  </a>
+</h3>
+
+<p>This has been hit before, with <a href="yt-project.org">yt</a>.
+Please ping Tom if you hit this, so we can correct the error for
+good.</p>
+
+<p>However, in the interest of getting moving now: remove the code that
+calls the MPI initialization routines.  MPI is already initialized and
+the subsequent initialization seems to cause problems.</p>
 
       </section>
     </div>
