@@ -81,10 +81,12 @@ __free__processor.  First, compile it the same way we compiled our
 
 === Using __free__processors
 
-We need three things to execute a __free__processor: 1) the
-__free__processor in library form, of course; 2) a program to inject
-our code into; and 3) a configuration file that specifies how the first
-two connect together.
+We need three things to execute a __free__processor:
+
+  1. the __free__processor in library form, of course;
+  2. a program to inject our code into; and
+  3. a configuration file that specifies how the first
+     two connect together.
 
 For the program, we can use almost any program on our system.  However,
 for the sake of demonstration it will be clearer to define our own
@@ -197,7 +199,7 @@ __Free__processing uses for the user's `exec` function. `exec` is
 executed *every* time the instrumented program performs any kind of
 `write` statement.  The `fwrite` in the `hw` program from the previous
 section translates directly into a single call of `exec`.  If we were
-to call `fwrite` in a loop, then, `exec` would execute as many times
+to call `fwrite` in a loop, then `exec` would execute as many times
 as the loop does.  In that case, we'd be calculating the minimum and
 maximum of _each_ write, as opposed to the minimum and maximum over
 _all_ writes.
@@ -302,7 +304,7 @@ data file: the data is not useful until you receive some additional
 metadata that explains what the data's format is.  One needs to impose
 the data's organization on the binary stream to make it useful.
 
-__Free__processing lets you do this however you want.  However, here we
+__Free__processing lets you do this however you want.  However, we
 espouse a particular method here in the interests of quickly getting a
 working system.  That method is to have a secondary file which contains
 this metadata, and parse out the information you need.  For generality,
