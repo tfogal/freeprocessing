@@ -175,7 +175,7 @@ section {
   padding: 15px 20px;
   font-size: larger;
   text-shadow: rgba(255, 255, 255, 0.9) 0 1px 0;
-  text-shadow: 1px 1px LightSlateGray;
+  text-shadow: 1px 1px 1px LightSlateGray;
   border-top: 1px solid #fff;
   background: -webkit-gradient(linear, 50% 0%, 50% 700, color-stop(0%, #fafafa), color-stop(100%, #dedede));
   background: -webkit-linear-gradient(#fafafa, #dedede 700px);
@@ -196,6 +196,7 @@ h1, h2, h3, h4, h5, h6 {
   padding: 0;
   margin: 0 0 20px;
   line-height: 1.2;
+  text-shadow: 1px 1px 4px LightSlateGray;
 }
 
 p, ul, ol, table, pre, dl {
