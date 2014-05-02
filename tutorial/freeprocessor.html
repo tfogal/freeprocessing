@@ -738,7 +738,7 @@ asciidoc.install(2);
 <body class="article">
 <div id="header">
 <h1>A tutorial introduction to <em>Free</em>processing</h1>
-<span id="author">Tom Fogal &lt;tfogal@sci&gt;</span><br />
+<span id="author">Tom Fogal &lt;tfogal.at.uni-due&gt;</span><br />
 <div id="toc">
   <div id="toctitle">Table of Contents</div>
   <noscript><p><b>JavaScript must be enabled in your browser to display the table of contents.</b></p></noscript>
@@ -876,8 +876,8 @@ it to understand the code.</p></div>
 <div class="paragraph"><p>Now let&#8217;s run <tt>hw</tt> instrumented with <em>Free</em>processing.
 You could have installed the main <em>Free</em>processing
 library, <tt>libsitu.so</tt>, anywhere, so I&#8217;ll just refer to it as
-<tt>/path/to/freeprocessing/libsitu.so</tt>.  You should substitute the path to
-your <em>Free</em>processing install here here.</p></div>
+<tt>/path/to/freeprocessing/libsitu.so</tt>.  You should substitute the path
+to your <em>Free</em>processing install here.</p></div>
 <div class="listingblock">
 <div class="content"><!-- Generator: GNU source-highlight 3.1.6
 by Lorenzo Bettini
@@ -1004,7 +1004,7 @@ standardized mechanisms to obtain and utilize metadata.</td>
 executed <strong>every</strong> time the instrumented program performs any kind of
 <tt>write</tt> statement.  The <tt>fwrite</tt> in the <tt>hw</tt> program from the previous
 section translates directly into a single call of <tt>exec</tt>.  If we were
-to call <tt>fwrite</tt> in a loop, then, <tt>exec</tt> would execute as many times
+to call <tt>fwrite</tt> in a loop, then <tt>exec</tt> would execute as many times
 as the loop does.  In that case, we&#8217;d be calculating the minimum and
 maximum of <em>each</em> write, as opposed to the minimum and maximum over
 <em>all</em> writes.</p></div>
@@ -1014,9 +1014,9 @@ Furthermore, we need to initialize our minimum and maximum <em>once</em>,
 before any processing takes place; if we initialize it during <tt>exec</tt>,
 then we will kill any intermediate computation from a previous <tt>exec</tt>
 invocation.</p></div>
-<div class="paragraph"><p><em>Free</em>processors implement these two ideas using the functions
-<tt>file</tt> and <tt>finish</tt>.  Add the following functions to your <tt>minmax.c</tt>
-implementation:</p></div>
+<div class="paragraph"><p><em>Free</em>processors implement these two ideas using the functions <tt>file</tt>
+and <tt>finish</tt>.  Add these functions to your <tt>minmax.c</tt> implementation so
+that it reads:</p></div>
 <div class="listingblock">
 <div class="content"><!-- Generator: GNU source-highlight 3.1.6
 by Lorenzo Bettini
@@ -1033,6 +1033,16 @@ http://www.gnu.org/software/src-highlite -->
 <span style="color: #009900">void</span>
 <span style="font-weight: bold"><span style="color: #000000">finish</span></span><span style="color: #990000">(</span><span style="font-weight: bold"><span style="color: #0000FF">const</span></span> <span style="color: #009900">char</span><span style="color: #990000">*</span> fn<span style="color: #990000">)</span> <span style="color: #FF0000">{</span>
   <span style="font-weight: bold"><span style="color: #000000">printf</span></span><span style="color: #990000">(</span><span style="color: #FF0000">"The data range of %s is: [%d:%d]</span><span style="color: #CC33CC">\n</span><span style="color: #FF0000">"</span><span style="color: #990000">,</span> fn<span style="color: #990000">,</span> minmax<span style="color: #990000">[</span><span style="color: #993399">0</span><span style="color: #990000">],</span> minmax<span style="color: #990000">[</span><span style="color: #993399">1</span><span style="color: #990000">]);</span>
+<span style="color: #FF0000">}</span>
+<span style="color: #009900">void</span>
+<span style="font-weight: bold"><span style="color: #000000">exec</span></span><span style="color: #990000">(</span><span style="font-weight: bold"><span style="color: #0000FF">const</span></span> <span style="color: #009900">char</span><span style="color: #990000">*</span> fn<span style="color: #990000">,</span> <span style="font-weight: bold"><span style="color: #0000FF">const</span></span> <span style="color: #009900">void</span><span style="color: #990000">*</span> buf<span style="color: #990000">,</span> <span style="color: #008080">size_t</span> n<span style="color: #990000">)</span> <span style="color: #FF0000">{</span>
+  <span style="color: #990000">(</span><span style="color: #009900">void</span><span style="color: #990000">)</span>fn<span style="color: #990000">;</span>
+  <span style="font-weight: bold"><span style="color: #0000FF">const</span></span> <span style="color: #009900">int</span><span style="color: #990000">*</span> data <span style="color: #990000">=</span> <span style="color: #990000">(</span><span style="font-weight: bold"><span style="color: #0000FF">const</span></span> <span style="color: #009900">int</span><span style="color: #990000">*)</span>buf<span style="color: #990000">;</span>
+  <span style="font-weight: bold"><span style="color: #0000FF">const</span></span> <span style="color: #008080">size_t</span> elems <span style="color: #990000">=</span> n <span style="color: #990000">/</span> <span style="font-weight: bold"><span style="color: #0000FF">sizeof</span></span><span style="color: #990000">(</span><span style="color: #009900">int</span><span style="color: #990000">);</span>
+  <span style="font-weight: bold"><span style="color: #0000FF">for</span></span><span style="color: #990000">(</span><span style="color: #008080">size_t</span> i<span style="color: #990000">=</span><span style="color: #993399">0</span><span style="color: #990000">;</span> i <span style="color: #990000">&lt;</span> elems<span style="color: #990000">;</span> <span style="color: #990000">++</span>i<span style="color: #990000">)</span> <span style="color: #FF0000">{</span>
+    minmax<span style="color: #990000">[</span><span style="color: #993399">0</span><span style="color: #990000">]</span> <span style="color: #990000">=</span> data<span style="color: #990000">[</span>i<span style="color: #990000">]</span> <span style="color: #990000">&lt;</span> minmax<span style="color: #990000">[</span><span style="color: #993399">0</span><span style="color: #990000">]</span> <span style="color: #990000">?</span> data<span style="color: #990000">[</span>i<span style="color: #990000">]</span> <span style="color: #990000">:</span> minmax<span style="color: #990000">[</span><span style="color: #993399">0</span><span style="color: #990000">];</span>
+    minmax<span style="color: #990000">[</span><span style="color: #993399">1</span><span style="color: #990000">]</span> <span style="color: #990000">=</span> data<span style="color: #990000">[</span>i<span style="color: #990000">]</span> <span style="color: #990000">&gt;</span> minmax<span style="color: #990000">[</span><span style="color: #993399">1</span><span style="color: #990000">]</span> <span style="color: #990000">?</span> data<span style="color: #990000">[</span>i<span style="color: #990000">]</span> <span style="color: #990000">:</span> minmax<span style="color: #990000">[</span><span style="color: #993399">1</span><span style="color: #990000">];</span>
+  <span style="color: #FF0000">}</span>
 <span style="color: #FF0000">}</span></tt></pre></div></div>
 <div class="paragraph"><p><tt>file</tt> is invoked whenever a new file matching the <tt>situ.cfg</tt>
 mapping is opened.  This is therefore a good place to perform any
@@ -1053,8 +1063,6 @@ to create a <tt>new object</tt> in <tt>file</tt>, manipulate that object in <tt>
 and <tt>delete</tt> the object in <tt>finish</tt>.</td>
 </tr></table>
 </div>
-<div class="paragraph"><p>Make sure to modify <tt>minmax.c</tt>'s <tt>exec</tt> function to consist of only the
-loop as well.</p></div>
 <div class="paragraph"><p>Now we have a valid <em>free</em>processor which can compute the min/max
 of all the data pushed through it.  Congratulations!  This is the
 first <em>free</em>processor that is conceivably useful in practice.  The
@@ -1083,7 +1091,7 @@ directory of the <em>Free</em>processing git repository.</p></div>
 visualization scenarios easy to implement.  However, it can also be
 used as a simple mechanism for <em>chaining</em> dependent tasks.  In this
 scenario, a program creates many different outputs in sequence; each
-output, in turn, requires some postprocessing by a separate program.
+output, in turn, requires some post-processing by a separate program.
 You might also think of this scenario as &#8216;poor man&#8217;s <em>in situ</em>&#8217;.</p></div>
 <div class="paragraph"><p>Implementing this in the standard UNIX paradigm is difficult.  The
 problem is that the producers and consumers need some method of
@@ -1133,7 +1141,7 @@ binary data.  This is much like when a collaborator sends a binary
 data file: the data is not useful until you receive some additional
 metadata that explains what the data&#8217;s format is.  One needs to impose
 the data&#8217;s organization on the binary stream to make it useful.</p></div>
-<div class="paragraph"><p><em>Free</em>processing lets you do this however you want.  However, here we
+<div class="paragraph"><p><em>Free</em>processing lets you do this however you want.  However, we
 espouse a particular method here in the interests of quickly getting a
 working system.  That method is to have a secondary file which contains
 this metadata, and parse out the information you need.  For generality,
@@ -1274,7 +1282,7 @@ out just a particular field in a multi-field HDF5 file.</p></div>
 <div id="footnotes"><hr /></div>
 <div id="footer">
 <div id="footer-text">
-Last updated 2014-05-01 17:43:28 CEST
+Last updated 2014-05-02 16:14:26 CEST
 </div>
 </div>
 </body>
