@@ -108,8 +108,8 @@ it to understand the code.
 Now let's run `hw` instrumented with __Free__processing.
 You could have installed the main __Free__processing
 library, `libsitu.so`, anywhere, so I'll just refer to it as
-`/path/to/freeprocessing/libsitu.so`.  You should substitute the path to
-your __Free__processing install here here.
+`/path/to/freeprocessing/libsitu.so`.  You should substitute the path
+to your __Free__processing install here.
 
 [source,bash]
 $ LD_PRELOAD=/path/to/freeprocessing/libsitu.so ./hw 42
@@ -211,9 +211,9 @@ before any processing takes place; if we initialize it during `exec`,
 then we will kill any intermediate computation from a previous `exec`
 invocation.
 
-__Free__processors implement these two ideas using the functions
-`file` and `finish`.  Add the following functions to your `minmax.c`
-implementation:
+__Free__processors implement these two ideas using the functions `file`
+and `finish`.  Add these functions to your `minmax.c` implementation so
+that it reads:
 
 [C]
 source~~~~
@@ -234,9 +234,6 @@ programming.  For those of us who prefer to use C++, you might prefer
 to create a `new object` in `file`, manipulate that object in `exec`,
 and `delete` the object in `finish`.
 
-Make sure to modify `minmax.c`'s `exec` function to consist of only the
-loop as well.
-
 Now we have a valid __free__processor which can compute the min/max
 of all the data pushed through it.  Congratulations!  This is the
 first __free__processor that is conceivably useful in practice.  The
@@ -255,7 +252,7 @@ __Free__processing was designed to make a variety of _in situ_
 visualization scenarios easy to implement.  However, it can also be
 used as a simple mechanism for _chaining_ dependent tasks.  In this
 scenario, a program creates many different outputs in sequence; each
-output, in turn, requires some postprocessing by a separate program.
+output, in turn, requires some post-processing by a separate program.
 You might also think of this scenario as `poor man's _in situ_'.
 
 Implementing this in the standard UNIX paradigm is difficult.  The
